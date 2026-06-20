@@ -166,8 +166,13 @@ enum AccessibilityHelper {
         var pid: pid_t = 0
         AXUIElementGetPid(window, &pid)
         let beforeFrame = getFrame(of: window)
-        setPosition(of: window, to: position)
+        
+        // 1. 先にサイズを設定（スナップやリサイズ制限を確定させる）
         let success = setSize(of: window, to: size)
+        
+        // 2. その後に位置を設定（リサイズによる座標の戻りを防ぐ）
+        setPosition(of: window, to: position)
+        
         Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(success) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrame.map { "\($0)" } ?? "nil"))")
         return success
     }
