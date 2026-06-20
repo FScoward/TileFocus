@@ -2,6 +2,11 @@ import Foundation
 import AppKit
 
 /// Focus Mode のロジックを担当するコントローラー
+///
+/// 動作:
+/// 1. アクティブ化時: フロントウィンドウを中央大きく、他をサイドバーに配置
+/// 2. アプリ切り替え時 (NSWorkspace 通知): 自動的にレイアウトを更新
+/// 3. ⌃⌘M: 手動でメインウィンドウを切り替え
 @MainActor
 final class FocusModeController {
 
@@ -16,6 +21,12 @@ final class FocusModeController {
     /// フォーカス中のウィンドウ ID（メインウィンドウ）
     private var focusedWindowID: String?
 
+    /// NSWorkspace の通知 token
+    private var workspaceObservers: [NSObjectProtocol] = []
+
+    /// デバウンス用 WorkItem（連続したレイアウト更新をまとめる）
+    private var updateWorkItem: DispatchWorkItem?
+
     // MARK: - Init
 
     init(windowManager: WindowManager) {
@@ -25,23 +36,91 @@ final class FocusModeController {
     // MARK: - Lifecycle
 
     func activate() {
-        guard let windowManager else { return }
-        // 現在フォーカスされているアプリのウィンドウをメインに設定
-        if let frontApp = NSWorkspace.shared.frontmostApplication {
-            let pid = frontApp.processIdentifier
-            focusedWindowID = windowManager.managedWindows.first { $0.pid == pid }?.id
-        } else {
-            focusedWindowID = windowManager.managedWindows.first?.id
-        }
+        // 現在フォーカスされているウィンドウをメインに設定
+        updateFocusedWindow()
         applyLayout()
+
+        // アプリ切り替えを監視 → 自動的にレイアウト更新
+        let activateToken = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                self.updateFocusedWindow()
+                self.scheduleLayoutUpdate()
+            }
+        }
+
+        workspaceObservers = [activateToken]
+        print("[FocusModeController] アクティブ化 - 監視開始")
     }
 
     func deactivate() {
+        updateWorkItem?.cancel()
+        updateWorkItem = nil
+
+        for token in workspaceObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(token)
+        }
+        workspaceObservers = []
         focusedWindowID = nil
         print("[FocusModeController] 非アクティブ化")
     }
 
+    // MARK: - Focus Control
+
+    /// フロントアプリのメインウィンドウを focused として設定
+    private func updateFocusedWindow() {
+        guard let windowManager else { return }
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
+
+        // TileFocus 自身がフロントになった場合は無視
+        if frontApp.processIdentifier == ProcessInfo.processInfo.processIdentifier { return }
+
+        let pid = frontApp.processIdentifier
+
+        // kAXMainAttribute == true のウィンドウを探す
+        let axWindows = AccessibilityHelper.getWindows(for: pid)
+        let mainAX = axWindows.first { AccessibilityHelper.isMainWindow($0) } ?? axWindows.first
+
+        let mainTitle = mainAX.flatMap { AccessibilityHelper.getTitle(of: $0) } ?? ""
+
+        // managedWindows 内で対応するウィンドウを探す
+        if let match = windowManager.managedWindows.first(where: {
+            $0.pid == pid && ($0.title == mainTitle || mainTitle.isEmpty)
+        }) {
+            if match.id != focusedWindowID {
+                focusedWindowID = match.id
+                print("[FocusModeController] フォーカス変更: \(match.appName) - \(match.title)")
+            }
+        } else if let first = windowManager.managedWindows.first(where: { $0.pid == pid }) {
+            if first.id != focusedWindowID {
+                focusedWindowID = first.id
+                print("[FocusModeController] フォーカス変更(PIDマッチ): \(first.appName)")
+            }
+        }
+    }
+
+    /// メインウィンドウを手動で切り替える（⌌⌘M 連携）
+    func switchMainWindow(to windowID: String) {
+        guard focusedWindowID != windowID else { return }
+        focusedWindowID = windowID
+        applyLayout()
+    }
+
     // MARK: - Layout Application
+
+    /// デバウンス付きレイアウト更新（アプリ切り替え通知の連続発火対策）
+    func scheduleLayoutUpdate(debounce: TimeInterval = 0.1) {
+        updateWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.applyLayout()
+        }
+        updateWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + debounce, execute: item)
+    }
 
     /// フォーカスレイアウトを適用
     func applyLayout() {
@@ -49,9 +128,7 @@ final class FocusModeController {
         let windows = windowManager.managedWindows.filter { $0.state != .staged }
         guard !windows.isEmpty else { return }
 
-        let screenFrame = screenManager.primaryVisibleFrameForAX
-
-        // フォーカスウィンドウを先頭にして並び替え
+        // フォーカスウィンドウを先頭に並び替え
         var ordered = windows
         if let focusedID = focusedWindowID,
            let idx = ordered.firstIndex(where: { $0.id == focusedID }) {
@@ -59,43 +136,55 @@ final class FocusModeController {
             ordered.insert(focused, at: 0)
         }
 
-        let frames = layout.calculateFrames(
-            windowCount: ordered.count,
-            screenFrame: screenFrame
-        )
+        // スクリーン別にグループ化
+        let screens = NSScreen.screens
+        var screenGroups: [[ManagedWindow]] = Array(repeating: [], count: max(screens.count, 1))
+        for window in ordered {
+            let idx = screenIndex(for: window.frame, in: screens)
+            screenGroups[idx].append(window)
+        }
 
-        // フォーカス適用中フラグを立てて移動通知ループを防ぐ
+        // タイリング中フラグ（AX 通知ループ防止）
         windowManager.setTilingInProgress(true)
         defer { windowManager.setTilingInProgress(false) }
 
-        for (index, window) in ordered.enumerated() {
-            guard index < frames.count else { break }
-            let targetFrame = frames[index]
+        for (si, group) in screenGroups.enumerated() {
+            guard !group.isEmpty else { continue }
+            let screen = screens[si]
+            let screenAXFrame = screenManager.visibleFrameInAX(for: screen)
+            let frames = layout.calculateFrames(windowCount: group.count, screenFrame: screenAXFrame)
 
-            // タイトルベースでウィンドウを特定
-            guard let axWindow = AccessibilityHelper.findWindow(for: window.pid, title: window.title) else {
-                continue
-            }
+            for (i, window) in group.enumerated() {
+                guard i < frames.count else { break }
+                guard let axWindow = AccessibilityHelper.findWindow(for: window.pid, title: window.title) else {
+                    continue
+                }
+                let targetFrame = frames[i]
+                AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
 
-            // 即時移動（asyncAfter は使わない）
-            AccessibilityHelper.moveAndResize(
-                window: axWindow,
-                to: targetFrame.origin,
-                size: targetFrame.size
-            )
-
-            // メインウィンドウ（index == 0）にフォーカス
-            if index == 0 {
-                AccessibilityHelper.focus(window: axWindow)
+                // メインウィンドウ（index==0）にフォーカスを当てる
+                if i == 0 {
+                    AccessibilityHelper.focus(window: axWindow)
+                }
             }
         }
 
-        print("[FocusModeController] フォーカスレイアウト適用: \(ordered.count) ウィンドウ")
+        print("[FocusModeController] レイアウト適用: \(ordered.count) ウィンドウ, focus=\(focusedWindowID ?? "none")")
     }
 
-    /// メインウィンドウを切り替える
-    func switchMainWindow(to windowID: String) {
-        focusedWindowID = windowID
-        applyLayout()
+    // MARK: - Private
+
+    /// AX フレームが最もよく含まれるスクリーンのインデックスを返す
+    private func screenIndex(for axFrame: CGRect, in screens: [NSScreen]) -> Int {
+        let appKitFrame = screenManager.axToAppKit(axFrame)
+        var bestIndex = 0
+        var bestArea: CGFloat = -1
+        for (i, screen) in screens.enumerated() {
+            let intersection = screen.frame.intersection(appKitFrame)
+            let area = intersection.width > 0 && intersection.height > 0
+                ? intersection.width * intersection.height : 0
+            if area > bestArea { bestArea = area; bestIndex = i }
+        }
+        return bestIndex
     }
 }
