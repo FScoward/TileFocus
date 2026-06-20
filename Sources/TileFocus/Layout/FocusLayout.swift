@@ -17,7 +17,7 @@ struct FocusLayout: Layout {
     var gap: TilingGap = TilingGap(outer: 8, inner: 6)
 
     /// メインウィンドウの幅比率（全体の何 %）
-    var mainWidthRatio: CGFloat = 0.60
+    var mainWidthRatio: CGFloat = 0.55
 
     /// サイドバーの 1 ウィンドウあたりの最小高さ（px）
     /// これを下回る場合はウィンドウを表示しない（truncate）
