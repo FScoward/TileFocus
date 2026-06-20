@@ -95,7 +95,12 @@ final class TilingModeController {
         // スクリーンごとにグループ化
         var windowGroups: [[ManagedWindow]] = Array(repeating: [], count: screens.count)
         for window in tiledWindows {
-            let idx = screenIndex(for: window.frame, in: screens)
+            var currentFrame = window.frame
+            if let axWindow = findAXWindow(for: window),
+               let realFrame = AccessibilityHelper.getFrame(of: axWindow) {
+                currentFrame = realFrame
+            }
+            let idx = screenIndex(for: currentFrame, in: screens)
             Log.debug(Self.tag, "  \"\(window.appName)\" → Screen[\(idx)]")
             windowGroups[idx].append(window)
         }

@@ -248,7 +248,12 @@ final class FocusModeController {
         let screens = NSScreen.screens
         var screenGroups: [[ManagedWindow]] = Array(repeating: [], count: max(screens.count, 1))
         for window in ordered {
-            let idx = screenIndex(for: window.frame, in: screens)
+            var currentFrame = window.frame
+            if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title),
+               let realFrame = AccessibilityHelper.getFrame(of: axWindow) {
+                currentFrame = realFrame
+            }
+            let idx = screenIndex(for: currentFrame, in: screens)
             screenGroups[idx].append(window)
         }
 
