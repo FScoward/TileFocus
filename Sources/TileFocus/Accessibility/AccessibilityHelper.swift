@@ -167,16 +167,20 @@ enum AccessibilityHelper {
         AXUIElementGetPid(window, &pid)
         let beforeFrame = getFrame(of: window)
         
-        // 1. 先に位置を設定（位置を確定させる）
-        setPosition(of: window, to: position)
-        
-        // 50ミリ秒のスリープを入れてOSの位置設定の完了を待つ（要求の衝突防止）
-        usleep(50000)
-        
-        // 2. 最後にサイズを設定（重いリサイズ処理が後続の位置設定に邪魔されないようにする）
+        // 1. 先にサイズを設定（小さくしてから移動させることで、ディスプレイを跨ぐ移動時のOS制限を回避）
         let success = setSize(of: window, to: size)
         
-        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(success) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrame.map { "\($0)" } ?? "nil"))")
+        // 100ミリ秒のスリープを入れてOSのサイズ設定の完了を待つ
+        usleep(100000)
+        
+        // 2. 最後に位置を設定
+        setPosition(of: window, to: position)
+        
+        // 位置設定がOSで処理されるのを少し待つ
+        usleep(50000)
+        
+        let afterFrame = getFrame(of: window)
+        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(success) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrame.map { "\($0)" } ?? "nil") afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
         return success
     }
 
