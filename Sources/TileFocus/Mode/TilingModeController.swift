@@ -101,7 +101,6 @@ final class TilingModeController {
         }
 
         windowManager.setTilingInProgress(true)
-        defer { windowManager.setTilingInProgress(false) }
 
         for (idx, windows) in windowGroups.enumerated() {
             guard !windows.isEmpty else { continue }
@@ -124,6 +123,12 @@ final class TilingModeController {
                 }
                 AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
             }
+        }
+
+        // レイアウト適用後の残留通知を吧めるため少し遅らせて false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.windowManager?.setTilingInProgress(false)
+            Log.debug(Self.tag, "setTilingInProgress(false) 完了")
         }
 
         Log.info(Self.tag, "applyTiling() 完了")

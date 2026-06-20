@@ -167,6 +167,9 @@ final class FocusModeController {
             screenGroups[idx].append(window)
         }
 
+        // タイリング中フラグ（全スクリーン分の処理全体を囲む）
+        windowManager.setTilingInProgress(true)
+
         for (si, group) in screenGroups.enumerated() {
             guard !group.isEmpty else { continue }
             let screen = screens[si]
@@ -175,11 +178,11 @@ final class FocusModeController {
 
             let frames = layout.calculateFrames(windowCount: group.count, screenFrame: screenAXFrame)
 
-            // タイリング中フラグ
-            windowManager.setTilingInProgress(true)
-
             for (i, window) in group.enumerated() {
-                guard i < frames.count else { break }
+                guard i < frames.count else {
+                    Log.debug(Self.tag, "    \"\(window.appName)\" はサイドバー超過のためスキップ")
+                    break
+                }
                 let targetFrame = frames[i]
                 let role = i == 0 ? "MAIN" : "SIDE[\(i)]"
                 Log.info(Self.tag, "    \(role) \"\(window.appName) - \(window.title)\" → \(targetFrame)")
@@ -194,8 +197,12 @@ final class FocusModeController {
                     AccessibilityHelper.focus(window: axWindow)
                 }
             }
+        }
 
-            windowManager.setTilingInProgress(false)
+        // focus() 後の OS によるウィンドウ稍微移動通知を吧めるため少し遅らせて false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.windowManager?.setTilingInProgress(false)
+            Log.debug(Self.tag, "setTilingInProgress(false) 完了")
         }
 
         Log.info(Self.tag, "applyLayout() 完了")
