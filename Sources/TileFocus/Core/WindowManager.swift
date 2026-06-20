@@ -281,6 +281,9 @@ final class WindowManager: ObservableObject {
             return false
         }
 
+        // 現在のスペースに表示されているウィンドウIDのセットを取得
+        let onScreenIDs = AccessibilityHelper.getOnScreenWindowIDs()
+
         for app in sortedApps {
             let pid = app.processIdentifier
             let localizedName = app.localizedName!
@@ -300,6 +303,12 @@ final class WindowManager: ObservableObject {
                 guard let frame = AccessibilityHelper.getFrame(of: axWindow) else { continue }
                 let title = AccessibilityHelper.getTitle(of: axWindow) ?? ""
                 let windowID = AccessibilityHelper.getWindowID(of: axWindow) ?? 0
+
+                // 現在のスペースにないウィンドウ（別スペースのウィンドウ）を除外
+                guard onScreenIDs.contains(windowID) else {
+                    Log.debug("WindowManager", "  除外 (別スペース): \"\(localizedName) - \(title)\" id=\(windowID)")
+                    continue
+                }
 
                 let managed = ManagedWindow(
                     pid: pid,

@@ -224,6 +224,13 @@ final class WindowObserver {
         // 最小サイズフィルタ（ツールウィンドウ・パネル等を除外）
         guard frame.width >= 100 && frame.height >= 100 else { return }
 
+        // 現在のスペースにないウィンドウ（別スペース）は無視
+        let onScreenIDs = AccessibilityHelper.getOnScreenWindowIDs()
+        guard onScreenIDs.contains(windowID) else {
+            Log.debug("WindowObserver", "  新規ウィンドウをスキップ (別スペース): \"\(appName) - \(title)\" id=\(windowID)")
+            return
+        }
+
         let window = ManagedWindow(
             pid: pid,
             windowID: windowID,
@@ -252,6 +259,10 @@ final class WindowObserver {
 
         let app = NSRunningApplication(processIdentifier: pid)
         let windowID = AccessibilityHelper.getWindowID(of: element) ?? 0
+
+        // 現在のスペースにないウィンドウ（別スペース）は無視
+        let onScreenIDs = AccessibilityHelper.getOnScreenWindowIDs()
+        guard onScreenIDs.contains(windowID) else { return }
 
         let window = ManagedWindow(
             pid: pid,

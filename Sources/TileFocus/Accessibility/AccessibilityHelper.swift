@@ -59,6 +59,12 @@ enum AccessibilityHelper {
             return false
         }
 
+        // フルスクリーンでないかチェック
+        if isFullScreen(window) {
+            Log.debug(tag, "isTileable=false fullscreen title=\(getTitle(of: window) ?? "")")
+            return false
+        }
+
         // 最小サイズチェック
         guard let frame = getFrame(of: window),
               frame.width >= 100, frame.height >= 100 else {
@@ -250,5 +256,28 @@ enum AccessibilityHelper {
         if result != .success {
             Log.warn(tag, "setSize failed result=\(result.rawValue) size=\(size)")
         }
+    }
+
+    /// ウィンドウがフルスクリーン状態かどうか判定
+    static func isFullScreen(_ window: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(window, "AXFullScreen" as CFString, &value)
+        guard result == .success, let boolValue = value as? Bool else { return false }
+        return boolValue
+    }
+
+    /// 現在のスペース（画面上）に存在する CGWindowID のセットを取得する
+    static func getOnScreenWindowIDs() -> Set<CGWindowID> {
+        let options: CGWindowListOption = [.excludeDesktopElements, .optionOnScreenOnly]
+        guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return []
+        }
+        var ids = Set<CGWindowID>()
+        for info in list {
+            if let wID = info[kCGWindowNumber as String] as? CGWindowID {
+                ids.insert(wID)
+            }
+        }
+        return ids
     }
 }
