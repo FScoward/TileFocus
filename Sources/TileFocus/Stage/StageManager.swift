@@ -10,8 +10,8 @@ final class StageManager {
     /// 格納中のウィンドウリスト
     private var staged: [ManagedWindow] = []
 
-    /// 格納位置: 画面左端外側
-    private let stagingOffset: CGFloat = -2000
+    /// 格納位置: 画面左端外側（十分に離す）
+    private let stagingX: CGFloat = -4000
 
     // MARK: - Stage / Unstage
 
@@ -25,28 +25,32 @@ final class StageManager {
         mutableWindow.frameBeforeStaging = window.frame
         mutableWindow.state = .staged
 
-        // ウィンドウを画面外に移動
-        let hiddenPosition = CGPoint(x: stagingOffset, y: window.frame.origin.y)
-        let axWindows = AccessibilityHelper.getWindows(for: window.pid)
-        if let axWindow = axWindows.first {
+        // ウィンドウを画面外に即時移動（animateMoveAndResize は使わない）
+        let hiddenPosition = CGPoint(x: stagingX, y: window.frame.origin.y)
+        if let axWindow = AccessibilityHelper.findWindow(for: window.pid, title: window.title) {
+            windowManager.setTilingInProgress(true)
             AccessibilityHelper.moveAndResize(
                 window: axWindow,
                 to: hiddenPosition,
                 size: window.frame.size
             )
+            windowManager.setTilingInProgress(false)
         }
 
-        // 管理リストを更新
+        // 管理リストから除去、格納リストへ追加
         var managedWindows = windowManager.managedWindows
-        if let idx = managedWindows.firstIndex(where: { $0.id == window.id }) {
-            managedWindows.remove(at: idx)
-            windowManager.updateManagedWindows(managedWindows)
-        }
+        managedWindows.removeAll { $0.id == window.id }
+        windowManager.updateManagedWindows(managedWindows)
 
         staged.append(mutableWindow)
         windowManager.updateStagedWindows(staged)
 
         print("[StageManager] 格納: \(window.appName) - \(window.title)")
+
+        // タイリング中なら残りのウィンドウを再タイリング
+        if windowManager.currentMode == .tiling {
+            windowManager.requestRetile()
+        }
     }
 
     /// 格納ウィンドウを復帰させる
@@ -57,17 +61,16 @@ final class StageManager {
         var restoredWindow = staged[idx]
         restoredWindow.state = .tiled
 
-        // 格納前のフレームに戻す
-        let targetFrame = restoredWindow.frameBeforeStaging ?? CGRect(
-            x: 100, y: 100, width: 800, height: 600
-        )
+        // 格納前のフレームに戻す（なければ画面中央に適当なサイズで）
+        let targetFrame = restoredWindow.frameBeforeStaging ?? defaultFrame()
         restoredWindow.frame = targetFrame
         restoredWindow.frameBeforeStaging = nil
 
-        // ウィンドウを元の位置に戻す
-        let axWindows = AccessibilityHelper.getWindows(for: window.pid)
-        if let axWindow = axWindows.first {
-            AccessibilityHelper.animateMoveAndResize(window: axWindow, to: targetFrame)
+        // ウィンドウを元の位置に即時移動（animateMoveAndResize は使わない）
+        if let axWindow = AccessibilityHelper.findWindow(for: window.pid, title: window.title) {
+            windowManager.setTilingInProgress(true)
+            AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
+            windowManager.setTilingInProgress(false)
             AccessibilityHelper.focus(window: axWindow)
         }
 
@@ -79,10 +82,9 @@ final class StageManager {
         managedWindows.append(restoredWindow)
         windowManager.updateManagedWindows(managedWindows)
 
-        // タイリング再適用
+        // タイリング中なら全体を再タイリング
         if windowManager.currentMode == .tiling {
-            // TilingModeController は WindowManager 経由で retile を呼ぶ（Phase 3 で連携強化）
-            print("[StageManager] タイリング再適用をリクエスト")
+            windowManager.requestRetile()
         }
 
         print("[StageManager] 復帰: \(window.appName) - \(window.title)")
@@ -95,5 +97,22 @@ final class StageManager {
         for window in toRestore {
             unstage(window: window, windowManager: windowManager)
         }
+    }
+
+    // MARK: - Private
+
+    private func defaultFrame() -> CGRect {
+        guard let screen = NSScreen.main else {
+            return CGRect(x: 100, y: 100, width: 800, height: 600)
+        }
+        // 画面中央に 70% サイズで配置（AppKit 座標）
+        let w = screen.visibleFrame.width * 0.7
+        let h = screen.visibleFrame.height * 0.7
+        let x = screen.visibleFrame.midX - w / 2
+        let y = screen.visibleFrame.midY - h / 2
+        // Accessibility 座標に変換
+        let screenManager = ScreenManager()
+        let nsRect = CGRect(x: x, y: y, width: w, height: h)
+        return screenManager.convertToAXCoordinates(nsRect, in: screen)
     }
 }

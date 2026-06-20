@@ -8,7 +8,7 @@ protocol WindowObserverDelegate: AnyObject {
     func windowObserver(_ observer: WindowObserver, didDetectWindowCreated window: ManagedWindow)
     /// ウィンドウが閉じられた
     func windowObserver(_ observer: WindowObserver, didDetectWindowClosed windowID: String)
-    /// ウィンドウが移動された
+    /// ウィンドウが移動・リサイズされた（ユーザー操作によるもの）
     func windowObserver(_ observer: WindowObserver, didDetectWindowMoved window: ManagedWindow)
 }
 
@@ -16,10 +16,11 @@ protocol WindowObserverDelegate: AnyObject {
 
 /// AXObserver + NSWorkspace を使ってウィンドウイベントを監視するクラス
 ///
-/// 注意点：
-/// - AXObserver への強参照を保持する必要がある（解放されると通知が停止する）
+/// 重要な設計上の注意点：
+/// - kAXWindowCreatedNotification は app element に登録
+/// - kAXWindowMovedNotification / Resized / Destroyed は window element に登録（app element では届かない）
+/// - AXObserver への強参照を保持する必要がある
 /// - CFRunLoopAddSource で RunLoop に追加しないと通知が届かない
-/// - システムワイドな「ウィンドウ作成」通知はない → 各アプリごとに AXObserver を作成
 final class WindowObserver {
 
     // MARK: - Properties
@@ -29,6 +30,9 @@ final class WindowObserver {
     /// pid → AXObserver のマップ（強参照を保持）
     private var axObservers: [pid_t: AXObserver] = [:]
 
+    /// 移動通知を無視するフラグ（タイリング適用中は自分が動かした移動を無視する）
+    var isTiling: Bool = false
+
     /// NSWorkspace の通知 token
     private var workspaceObservers: [NSObjectProtocol] = []
 
@@ -36,9 +40,9 @@ final class WindowObserver {
 
     /// 監視を開始する
     func startObserving() {
-        // 既存の実行中アプリを監視
+        // 既存の実行中アプリを監視（自分自身と .accessory 以外）
         for app in NSWorkspace.shared.runningApplications
-            where app.activationPolicy == .regular {
+            where shouldMonitor(app) {
             registerObserver(for: app)
         }
 
@@ -74,14 +78,22 @@ final class WindowObserver {
         }
         workspaceObservers = []
 
-        for (pid, observer) in axObservers {
-            let appElement = AXUIElementCreateApplication(pid)
+        for (_, observer) in axObservers {
             let src = AXObserverGetRunLoopSource(observer)
             CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .defaultMode)
-            _ = appElement // 参照を明示的に保持
         }
         axObservers = [:]
         print("[WindowObserver] 監視停止")
+    }
+
+    // MARK: - Private: Filter
+
+    private func shouldMonitor(_ app: NSRunningApplication) -> Bool {
+        // 自分自身は監視しない
+        if app.processIdentifier == ProcessInfo.processInfo.processIdentifier { return false }
+        // 通常の UI アプリのみ
+        guard app.activationPolicy == .regular else { return false }
+        return true
     }
 
     // MARK: - Private: AXObserver
@@ -89,34 +101,26 @@ final class WindowObserver {
     private func registerObserver(for app: NSRunningApplication) {
         let pid = app.processIdentifier
         guard axObservers[pid] == nil else { return }
+        guard shouldMonitor(app) else { return }
 
         var observer: AXObserver?
         let result = AXObserverCreate(pid, axCallback, &observer)
-        guard result == .success, let axObserver = observer else {
-            return
-        }
+        guard result == .success, let axObserver = observer else { return }
 
         let appElement = AXUIElementCreateApplication(pid)
-
-        // 監視するイベント
-        let notifications: [String] = [
-            kAXWindowCreatedNotification,
-            kAXUIElementDestroyedNotification,
-            kAXFocusedWindowChangedNotification,
-            kAXWindowMovedNotification,
-            kAXWindowResizedNotification
-        ]
-
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
 
-        for notification in notifications {
-            AXObserverAddNotification(
-                axObserver,
-                appElement,
-                notification as CFString,
-                selfPtr
-            )
+        // アプリレベルの通知: app element に登録
+        let appLevelNotifications: [String] = [
+            kAXWindowCreatedNotification,          // 新ウィンドウ
+            kAXFocusedWindowChangedNotification,   // フォーカス変更
+        ]
+        for notification in appLevelNotifications {
+            AXObserverAddNotification(axObserver, appElement, notification as CFString, selfPtr)
         }
+
+        // ウィンドウレベルの通知: 既存の各 window element に登録
+        registerWindowLevelNotifications(observer: axObserver, pid: pid, selfPtr: selfPtr)
 
         // RunLoop に追加（必須）
         let source = AXObserverGetRunLoopSource(axObserver)
@@ -126,6 +130,25 @@ final class WindowObserver {
         axObservers[pid] = axObserver
 
         print("[WindowObserver] 登録: \(app.localizedName ?? "Unknown") (pid=\(pid))")
+    }
+
+    /// 既存の全ウィンドウにウィンドウレベルの通知を登録する
+    private func registerWindowLevelNotifications(
+        observer: AXObserver,
+        pid: pid_t,
+        selfPtr: UnsafeMutableRawPointer
+    ) {
+        let windows = AccessibilityHelper.getWindows(for: pid)
+        let windowNotifications: [String] = [
+            kAXUIElementDestroyedNotification,  // ウィンドウ閉じ
+            kAXWindowMovedNotification,          // 移動
+            kAXWindowResizedNotification,        // リサイズ
+        ]
+        for window in windows {
+            for notification in windowNotifications {
+                AXObserverAddNotification(observer, window, notification as CFString, selfPtr)
+            }
+        }
     }
 
     private func unregisterObserver(for pid: pid_t) {
@@ -147,16 +170,18 @@ final class WindowObserver {
 
         switch notifName {
         case kAXWindowCreatedNotification:
-            handleWindowCreated(element: element)
+            handleWindowCreated(element: element, observer: observer)
 
         case kAXUIElementDestroyedNotification:
             handleWindowClosed(element: element)
 
         case kAXWindowMovedNotification, kAXWindowResizedNotification:
+            // タイリング適用中は自分が動かした移動を無視する（フィードバックループ防止）
+            guard !isTiling else { return }
             handleWindowMoved(element: element)
 
         case kAXFocusedWindowChangedNotification:
-            // フォーカス変更は WindowManager が NSWorkspace 経由で処理
+            // 将来の実装用（現在は無視）
             break
 
         default:
@@ -164,17 +189,30 @@ final class WindowObserver {
         }
     }
 
-    private func handleWindowCreated(element: AXUIElement) {
+    private func handleWindowCreated(element: AXUIElement, observer: AXObserver) {
         guard let frame = AccessibilityHelper.getFrame(of: element) else { return }
 
-        // PID を取得
         var pid: pid_t = 0
         AXUIElementGetPid(element, &pid)
+
+        // 新規ウィンドウにもウィンドウレベルの通知を登録
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        let windowNotifications: [String] = [
+            kAXUIElementDestroyedNotification,
+            kAXWindowMovedNotification,
+            kAXWindowResizedNotification,
+        ]
+        for notification in windowNotifications {
+            AXObserverAddNotification(observer, element, notification as CFString, selfPtr)
+        }
 
         let app = NSRunningApplication(processIdentifier: pid)
         let appName = app?.localizedName ?? "Unknown"
         let title = AccessibilityHelper.getTitle(of: element) ?? ""
         let windowID = AccessibilityHelper.getWindowID(of: element) ?? 0
+
+        // 最小サイズフィルタ（ツールウィンドウ・パネル等を除外）
+        guard frame.width >= 100 && frame.height >= 100 else { return }
 
         let window = ManagedWindow(
             pid: pid,
@@ -220,7 +258,6 @@ final class WindowObserver {
 
 // MARK: - AXObserver C Callback
 
-/// C 関数として定義する AXObserver コールバック
 private func axCallback(
     observer: AXObserver,
     element: AXUIElement,

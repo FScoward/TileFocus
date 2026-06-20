@@ -13,7 +13,7 @@ final class FocusModeController {
 
     // MARK: - State
 
-    /// フォーカス中のウィンドウ（メインウィンドウ）
+    /// フォーカス中のウィンドウ ID（メインウィンドウ）
     private var focusedWindowID: String?
 
     // MARK: - Init
@@ -50,6 +50,7 @@ final class FocusModeController {
         guard !windows.isEmpty else { return }
 
         let screenFrame = screenManager.primaryVisibleFrameForAX
+
         // フォーカスウィンドウを先頭にして並び替え
         var ordered = windows
         if let focusedID = focusedWindowID,
@@ -63,15 +64,29 @@ final class FocusModeController {
             screenFrame: screenFrame
         )
 
+        // フォーカス適用中フラグを立てて移動通知ループを防ぐ
+        windowManager.setTilingInProgress(true)
+        defer { windowManager.setTilingInProgress(false) }
+
         for (index, window) in ordered.enumerated() {
             guard index < frames.count else { break }
             let targetFrame = frames[index]
-            let axWindows = AccessibilityHelper.getWindows(for: window.pid)
-            if let axWindow = axWindows.first {
-                AccessibilityHelper.animateMoveAndResize(window: axWindow, to: targetFrame)
-                if index == 0 {
-                    AccessibilityHelper.focus(window: axWindow)
-                }
+
+            // タイトルベースでウィンドウを特定
+            guard let axWindow = AccessibilityHelper.findWindow(for: window.pid, title: window.title) else {
+                continue
+            }
+
+            // 即時移動（asyncAfter は使わない）
+            AccessibilityHelper.moveAndResize(
+                window: axWindow,
+                to: targetFrame.origin,
+                size: targetFrame.size
+            )
+
+            // メインウィンドウ（index == 0）にフォーカス
+            if index == 0 {
+                AccessibilityHelper.focus(window: axWindow)
             }
         }
 

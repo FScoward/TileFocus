@@ -21,6 +21,18 @@ enum AccessibilityHelper {
         return windows
     }
 
+    /// タイトルで AXUIElement を検索する（マルチウィンドウアプリ対応）
+    static func findWindow(for pid: pid_t, title: String) -> AXUIElement? {
+        let windows = getWindows(for: pid)
+        if title.isEmpty { return windows.first }
+        // タイトル完全一致
+        if let match = windows.first(where: { getTitle(of: $0) == title }) {
+            return match
+        }
+        // フォールバック: 最初のウィンドウ
+        return windows.first
+    }
+
     // MARK: - Frame (Position + Size)
 
     /// ウィンドウのフレームを取得（Accessibility 座標系: 左上原点）
@@ -40,7 +52,7 @@ enum AccessibilityHelper {
         )
         guard result == .success, let axValue = value else { return nil }
         var point = CGPoint.zero
-        AXValueGetValue(axValue as! AXValue, .cgPoint, &point)
+        guard AXValueGetValue(axValue as! AXValue, .cgPoint, &point) else { return nil }
         return point
     }
 
@@ -52,81 +64,24 @@ enum AccessibilityHelper {
         )
         guard result == .success, let axValue = value else { return nil }
         var size = CGSize.zero
-        AXValueGetValue(axValue as! AXValue, .cgSize, &size)
+        guard AXValueGetValue(axValue as! AXValue, .cgSize, &size) else { return nil }
         return size
     }
 
     // MARK: - Move & Resize
 
-    /// ウィンドウを指定位置・サイズに移動（即時）
-    /// - Parameters:
-    ///   - window: 対象の AXUIElement
-    ///   - position: 新しい位置（Accessibility 座標系: 左上原点）
-    ///   - size: 新しいサイズ
+    /// ウィンドウを指定位置・サイズに即時移動（同期・安全）
+    ///
+    /// - Note: 位置を先に設定してからサイズを設定する（順序重要）
+    /// - Note: asyncAfter は使わない → AXWindowMovedNotification の連鎖を防ぐ
     static func moveAndResize(window: AXUIElement, to position: CGPoint, size: CGSize) {
         setPosition(of: window, to: position)
         setSize(of: window, to: size)
     }
 
-    /// PID からウィンドウを特定して移動・リサイズ
-    static func moveAndResizeWindow(pid: pid_t, newPosition: CGPoint, newSize: CGSize) {
-        let appElement = AXUIElementCreateApplication(pid)
-        var value: CFTypeRef?
-        AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &value)
-
-        guard let windowList = value as? [AXUIElement],
-              let window = windowList.first else { return }
-
-        var pos = newPosition
-        var sz = newSize
-
-        guard let positionRef = AXValueCreate(.cgPoint, &pos),
-              let sizeRef = AXValueCreate(.cgSize, &sz) else { return }
-
-        // 位置を先に設定してからサイズを設定する（順序重要）
-        AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionRef)
-        AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeRef)
-    }
-
-    /// ウィンドウを指定フレームに移動・リサイズ
+    /// ウィンドウを指定フレームに即時移動・リサイズ
     static func setFrame(_ frame: CGRect, to window: AXUIElement) {
         moveAndResize(window: window, to: frame.origin, size: frame.size)
-    }
-
-    /// アニメーション付き移動（段階的に位置を変化させる）
-    /// - Parameters:
-    ///   - window: 対象の AXUIElement
-    ///   - targetFrame: 目標フレーム
-    ///   - steps: アニメーションステップ数
-    ///   - duration: アニメーション時間（秒）
-    static func animateMoveAndResize(
-        window: AXUIElement,
-        to targetFrame: CGRect,
-        steps: Int = 8,
-        duration: TimeInterval = 0.2
-    ) {
-        guard let currentFrame = getFrame(of: window) else {
-            setFrame(targetFrame, to: window)
-            return
-        }
-
-        let interval = duration / Double(steps)
-
-        for step in 1...steps {
-            let progress = Double(step) / Double(steps)
-            let interpolatedOrigin = CGPoint(
-                x: currentFrame.origin.x + (targetFrame.origin.x - currentFrame.origin.x) * progress,
-                y: currentFrame.origin.y + (targetFrame.origin.y - currentFrame.origin.y) * progress
-            )
-            let interpolatedSize = CGSize(
-                width: currentFrame.width + (targetFrame.width - currentFrame.width) * progress,
-                height: currentFrame.height + (targetFrame.height - currentFrame.height) * progress
-            )
-            let delay = interval * Double(step)
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                moveAndResize(window: window, to: interpolatedOrigin, size: interpolatedSize)
-            }
-        }
     }
 
     // MARK: - Title
@@ -144,35 +99,36 @@ enum AccessibilityHelper {
     // MARK: - Window ID
 
     /// AXUIElement から CGWindowID を取得
-    /// CGWindowListCopyWindowInfo を利用して PID とタイトルからマッチングする
+    /// CGWindowListCopyWindowInfo を PID フィルタで効率的に検索
     static func getWindowID(of window: AXUIElement) -> CGWindowID? {
         var pid: pid_t = 0
         AXUIElementGetPid(window, &pid)
         let title = getTitle(of: window) ?? ""
 
-        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        // スクリーン上のウィンドウ情報を取得（軽量オプション）
+        let options: CGWindowListOption = [.excludeDesktopElements]
         guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
             return nil
         }
-        for info in list {
-            guard let wPid = info[kCGWindowOwnerPID as String] as? pid_t,
-                  wPid == pid else { continue }
-            // タイトルが一致するウィンドウを探す（空タイトルは最初にマッチ）
-            let wName = info[kCGWindowName as String] as? String ?? ""
-            if title.isEmpty || wName == title {
-                if let wID = info[kCGWindowNumber as String] as? CGWindowID {
+
+        // 同じ PID のウィンドウに絞ってタイトルマッチ
+        let pidWindows = list.filter { ($0[kCGWindowOwnerPID as String] as? pid_t) == pid }
+
+        // タイトル完全一致
+        if !title.isEmpty {
+            for info in pidWindows {
+                let wName = info[kCGWindowName as String] as? String ?? ""
+                if wName == title, let wID = info[kCGWindowNumber as String] as? CGWindowID {
                     return wID
                 }
             }
         }
-        // フォールバック: 同じ PID の最初のウィンドウ
-        for info in list {
-            guard let wPid = info[kCGWindowOwnerPID as String] as? pid_t,
-                  wPid == pid else { continue }
-            if let wID = info[kCGWindowNumber as String] as? CGWindowID {
-                return wID
-            }
+
+        // フォールバック: 同 PID の最初のウィンドウ
+        if let first = pidWindows.first, let wID = first[kCGWindowNumber as String] as? CGWindowID {
+            return wID
         }
+
         return nil
     }
 
@@ -200,6 +156,18 @@ enum AccessibilityHelper {
             window, kAXMainAttribute as CFString, true as CFTypeRef
         )
         AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+    }
+
+    // MARK: - Minimized Check
+
+    /// ウィンドウが最小化されているかチェック
+    static func isMinimized(_ window: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(
+            window, kAXMinimizedAttribute as CFString, &value
+        )
+        guard result == .success, let boolValue = value as? Bool else { return false }
+        return boolValue
     }
 
     // MARK: - Private Helpers

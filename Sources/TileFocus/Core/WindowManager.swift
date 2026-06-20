@@ -115,6 +115,19 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    // MARK: - Tiling In Progress Flag
+
+    /// タイリング適用中かどうか（移動通知の無限ループ防止用）
+    func setTilingInProgress(_ inProgress: Bool) {
+        windowObserver?.isTiling = inProgress
+    }
+
+    /// 外部コンポーネントからタイリング再適用をリクエストする
+    func requestRetile() {
+        guard currentMode == .tiling else { return }
+        tilingController?.retile()
+    }
+
     // MARK: - Layout Control
 
     /// 次のレイアウトプリセットに切り替え
@@ -159,12 +172,16 @@ final class WindowManager: ObservableObject {
 
     // MARK: - Window List Management
 
-    /// ウィンドウリストを再取得
+    /// ウィンドウリストを再取得（フィルタリング強化版）
     func refreshWindowList() {
+        let selfPid = ProcessInfo.processInfo.processIdentifier
         let running = NSWorkspace.shared.runningApplications
         var windows: [ManagedWindow] = []
 
         for app in running {
+            // 自分自身は除外
+            if app.processIdentifier == selfPid { continue }
+            // 通常の UI アプリのみ
             guard app.activationPolicy == .regular,
                   let localizedName = app.localizedName else { continue }
 
@@ -173,6 +190,17 @@ final class WindowManager: ObservableObject {
 
             for axWindow in axWindows {
                 guard let frame = AccessibilityHelper.getFrame(of: axWindow) else { continue }
+
+                // 最小サイズフィルタ（ツールウィンドウ等を除外）
+                guard frame.width >= 100 && frame.height >= 100 else { continue }
+
+                // 画面外のウィンドウ（最小化済み等）を除外
+                let isOffScreen = NSScreen.screens.allSatisfy { screen in
+                    let axFrame = ScreenManager().convertToAppKitCoordinates(frame, in: screen)
+                    return !screen.frame.intersects(axFrame)
+                }
+                guard !isOffScreen else { continue }
+
                 let title = AccessibilityHelper.getTitle(of: axWindow) ?? ""
                 let windowID = AccessibilityHelper.getWindowID(of: axWindow) ?? 0
 
@@ -194,7 +222,13 @@ final class WindowManager: ObservableObject {
 
     /// ウィンドウを追加（新規作成時）
     func addWindow(_ window: ManagedWindow) {
+        // 重複チェック
         guard !managedWindows.contains(window) else { return }
+        // 自分自身のプロセスは無視
+        guard window.pid != ProcessInfo.processInfo.processIdentifier else { return }
+        // 最小サイズフィルタ
+        guard window.frame.width >= 100 && window.frame.height >= 100 else { return }
+
         managedWindows.append(window)
         if currentMode == .tiling {
             tilingController?.retile()
@@ -255,6 +289,7 @@ extension WindowManager: WindowObserverDelegate {
         _ observer: WindowObserver,
         didDetectWindowMoved window: ManagedWindow
     ) {
+        // ユーザーが手動で移動した場合のみフレームを更新（タイリング中は無視）
         Task { @MainActor in
             if let index = managedWindows.firstIndex(where: { $0.id == window.id }) {
                 managedWindows[index].frame = window.frame

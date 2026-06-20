@@ -15,11 +15,14 @@ final class TilingModeController {
     /// 現在選択されているレイアウトのインデックス
     private var currentLayoutIndex: Int = 0
 
-    /// 自動選択モードか否か（nil = 自動）
+    /// 自動選択モードか否か
     private var isAutoLayout: Bool = true
 
     /// レイアウト一覧
     private let layouts: [any Layout] = LayoutRegistry.allLayouts
+
+    /// デバウンス用 WorkItem（連続した retile 呼び出しをまとめる）
+    private var retileWorkItem: DispatchWorkItem?
 
     // MARK: - Init
 
@@ -35,7 +38,8 @@ final class TilingModeController {
     }
 
     func deactivate() {
-        // ウィンドウを元の位置に戻す（Phase 5 で強化予定）
+        retileWorkItem?.cancel()
+        retileWorkItem = nil
         print("[TilingModeController] 非アクティブ化")
     }
 
@@ -57,10 +61,22 @@ final class TilingModeController {
         retile()
     }
 
-    // MARK: - Tiling
+    // MARK: - Tiling（デバウンス付き）
 
-    /// 現在のウィンドウリストに対してタイリングを適用
-    func retile() {
+    /// タイリングをデバウンスして適用（連続呼び出しをまとめる）
+    func retile(debounce: TimeInterval = 0.05) {
+        retileWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.applyTiling()
+        }
+        retileWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + debounce, execute: item)
+    }
+
+    // MARK: - Private
+
+    /// 実際にタイリングを適用する（内部メソッド）
+    private func applyTiling() {
         guard let windowManager else { return }
         let tiledWindows = windowManager.managedWindows.filter { $0.state != .staged }
         guard !tiledWindows.isEmpty else { return }
@@ -80,19 +96,47 @@ final class TilingModeController {
             screenFrame: screenFrame
         )
 
+        // タイリング中フラグを立てて移動通知の無限ループを防ぐ
+        windowManager.setTilingInProgress(true)
+        defer { windowManager.setTilingInProgress(false) }
+
         for (index, window) in tiledWindows.enumerated() {
             guard index < frames.count else { break }
             let targetFrame = frames[index]
-            let axWindows = AccessibilityHelper.getWindows(for: window.pid)
-            // pid の最初のウィンドウを対象にする（Phase 3 で WindowID マッチングに強化予定）
-            if let axWindow = axWindows.first {
-                AccessibilityHelper.animateMoveAndResize(
-                    window: axWindow,
-                    to: targetFrame
-                )
+
+            // WindowID でマッチングして正しいウィンドウを特定
+            let axWindow = findAXWindow(for: window)
+            guard let axWindow else {
+                print("[TilingModeController] ウィンドウが見つかりません: \(window.appName) - \(window.title)")
+                continue
             }
+
+            // アニメーションなしで直接移動（asyncAfter による連鎖を防ぐ）
+            AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
         }
 
         print("[TilingModeController] タイリング適用: \(tiledWindows.count) ウィンドウ, レイアウト: \(layout.name)")
+    }
+
+    /// ManagedWindow に対応する AXUIElement を探す
+    private func findAXWindow(for managed: ManagedWindow) -> AXUIElement? {
+        let axWindows = AccessibilityHelper.getWindows(for: managed.pid)
+        guard !axWindows.isEmpty else { return nil }
+
+        // WindowID が 0（不明）の場合は最初のウィンドウを返す
+        if managed.windowID == 0 {
+            return axWindows.first
+        }
+
+        // タイトルで一致するウィンドウを探す
+        for axWindow in axWindows {
+            let title = AccessibilityHelper.getTitle(of: axWindow) ?? ""
+            if title == managed.title {
+                return axWindow
+            }
+        }
+
+        // フォールバック: 最初のウィンドウ
+        return axWindows.first
     }
 }
