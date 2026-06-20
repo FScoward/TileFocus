@@ -272,9 +272,8 @@ final class FocusModeController {
 
                 AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
 
-                // 配置後、実際のフレームを AX から再取得して記録（サイズ制限等を考慮するため）
-                let realFrame = AccessibilityHelper.getFrame(of: axWindow) ?? targetFrame
-                appliedFrames.append((id: window.id, frame: realFrame))
+                // 一旦、計算された理想フレームを仮記録（非同期移動中のため直後の getFrame は古い値を返す）
+                appliedFrames.append((id: window.id, frame: targetFrame))
 
                 // フォーカスウィンドウの AX を記録（まだ focus() しない）
                 if window.id == focusedWindow?.id {
@@ -296,8 +295,10 @@ final class FocusModeController {
 
         // focus() 後の OS によるウィンドウ微小移動通知を吸収するため少し遅らせて false に戻す
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
-            self?.windowManager?.setTilingInProgress(false)
-            self?.isApplyingLayout = false
+            guard let self else { return }
+            self.windowManager?.syncActualFrames() // 物理的な配置完了後のリアル座標で最終同期！
+            self.windowManager?.setTilingInProgress(false)
+            self.isApplyingLayout = false
             Log.debug(Self.tag, "setTilingInProgress(false) / isApplyingLayout=false 完了")
         }
 

@@ -369,6 +369,20 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    /// 画面上の実際のウィンドウフレームを AX API から再取得し、現在のキャッシュを一括更新する
+    /// タイリングなどの非同期なウィンドウ移動が完了した後に呼び出してキャッシュの完全な同期を保証します
+    func syncActualFrames() {
+        var updatedFrames: [(id: String, frame: CGRect)] = []
+        for window in managedWindows {
+            if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title),
+               let realFrame = AccessibilityHelper.getFrame(of: axWindow) {
+                updatedFrames.append((id: window.id, frame: realFrame))
+            }
+        }
+        updateFrames(updatedFrames)
+        Log.debug("WindowManager", "syncActualFrames: 実際のフレームで同期完了 (\(updatedFrames.count)件)")
+    }
+
     // MARK: - Helpers
 
     /// 現在フォーカスされているウィンドウを取得
