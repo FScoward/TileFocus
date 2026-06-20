@@ -177,6 +177,55 @@ struct MenuBarView: View {
 
     private var actionSection: some View {
         VStack(alignment: .leading, spacing: 2) {
+
+            // Tiling Mode 時のみ: マスターウィンドウ操作
+            if windowManager.currentMode == .tiling {
+                // 現在のマスター表示
+                if let master = windowManager.masterWindow {
+                    HStack {
+                        Image(systemName: "crown.fill")
+                            .foregroundStyle(.yellow)
+                            .frame(width: 16)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("マスター")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            Text(master.title.isEmpty ? master.appName : master.title)
+                                .font(.caption)
+                                .lineLimit(1)
+                                .foregroundStyle(.primary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 4)
+                }
+
+                // マスター昇格ボタン
+                Button {
+                    windowManager.promoteCurrentWindowToMaster()
+                } label: {
+                    HStack {
+                        Image(systemName: "crown")
+                            .frame(width: 16)
+                        Text("フロントウィンドウをマスターに")
+                        Spacer()
+                        Text("⌃⌘M")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .padding(.horizontal, 4)
+
+                Divider()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 2)
+            }
+
             Button {
                 windowManager.stageFocusedWindow()
             } label: {

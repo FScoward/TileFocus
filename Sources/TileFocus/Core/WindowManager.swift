@@ -146,6 +146,54 @@ final class WindowManager: ObservableObject {
         currentLayout = layout
     }
 
+    // MARK: - Master Window Control
+
+    /// フロントウィンドウをマスター（リスト先頭）に是抜する
+    ///
+    /// Tiling Mode の MasterStack レイアウトでは index=0 が左大領域になる。
+    /// フロントにあるアプリのメインウィンドウを先頭に移動する。
+    func promoteCurrentWindowToMaster() {
+        guard currentMode == .tiling else { return }
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
+        let frontPid = frontApp.processIdentifier
+
+        // フロントアプリの現在のメインウィンドウを特定する
+        // (kAXMainAttribute == true のウィンドウ)
+        let frontAXWindows = AccessibilityHelper.getWindows(for: frontPid)
+        let mainAXWindow = frontAXWindows.first { AccessibilityHelper.isMainWindow($0) }
+            ?? frontAXWindows.first
+        guard let mainAX = mainAXWindow else {
+            print("[WindowManager] フロントアプリのウィンドウが見つかりません")
+            return
+        }
+        let mainTitle = AccessibilityHelper.getTitle(of: mainAX) ?? ""
+
+        // managedWindows 内で対応する ManagedWindow を探す
+        guard let idx = managedWindows.firstIndex(where: { $0.pid == frontPid && ($0.title == mainTitle || mainTitle.isEmpty) }) else {
+            print("[WindowManager] フロントウィンドウが管理リストにありません: \(mainTitle)")
+            return
+        }
+
+        guard idx != 0 else {
+            print("[WindowManager] \(mainTitle) はすでにマスターです")
+            return
+        }
+
+        // 先頭に移動（同じスクリーン内の先頭に入れ替え）
+        let promoted = managedWindows.remove(at: idx)
+        managedWindows.insert(promoted, at: 0)
+        print("[WindowManager] マスター変更: \(promoted.appName) - \(promoted.title)")
+
+        // 再タイリング
+        tilingController?.retile()
+        objectWillChange.send()
+    }
+
+    /// 現在のマスターウィンドウの情報を返す
+    var masterWindow: ManagedWindow? {
+        managedWindows.first { $0.state != .staged }
+    }
+
     // MARK: - Stage Control
 
     /// フォーカス中のウィンドウを格納

@@ -4,13 +4,14 @@ import HotKey
 
 /// グローバルホットキーの登録・管理
 ///
-/// ドキュメント定義のショートカット:
-/// - Cmd+Ctrl+T: Tiling Mode ON/OFF
-/// - Cmd+Ctrl+F: Focus Mode ON/OFF
-/// - Cmd+Ctrl+S: フォーカスウィンドウを格納
-/// - Cmd+Ctrl+R: 格納ウィンドウを全復帰
-/// - Cmd+Ctrl+→: 次のレイアウトプリセット
-/// - Cmd+Ctrl+←: 前のレイアウトプリセット
+/// ショートカット一覧:
+/// - ⌃⌘T  : Tiling Mode ON/OFF
+/// - ⌃⌘F  : Focus Mode ON/OFF
+/// - ⌃⌘M  : フロントウィンドウをマスターに是抜
+/// - ⌃⌘S  : フォーカスウィンドウを格納
+/// - ⌃⌘R  : 格納ウィンドウを全復帰
+/// - ⌃⌘→ : 次のレイアウトプリセット
+/// - ⌃⌘← : 前のレイアウトプリセット
 final class HotKeyManager {
 
     // MARK: - Dependencies
@@ -66,7 +67,13 @@ final class HotKeyManager {
             Task { @MainActor in self?.windowManager?.previousLayout() }
         }
 
-        hotKeys = [tilingHK, focusHK, stageHK, restoreHK, nextLayoutHK, prevLayoutHK]
+        // フロントウィンドウをマスターに是抜: Cmd+Ctrl+M
+        let masterHK = HotKey(key: Key.m, modifiers: NSEvent.ModifierFlags([.command, .control]))
+        masterHK.keyDownHandler = { [weak self] in
+            Task { @MainActor in self?.windowManager?.promoteCurrentWindowToMaster() }
+        }
+
+        hotKeys = [tilingHK, focusHK, stageHK, restoreHK, nextLayoutHK, prevLayoutHK, masterHK]
         print("[HotKeyManager] \(hotKeys.count) 個のホットキーを登録")
     }
 
