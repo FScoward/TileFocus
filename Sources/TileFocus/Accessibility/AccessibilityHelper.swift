@@ -1,6 +1,9 @@
 import Foundation
 import AppKit
 
+@_silgen_name("_AXUIElementGetWindow")
+func _AXUIElementGetWindow(_ element: AXUIElement, _ identifier: inout CGWindowID) -> AXError
+
 /// AXUIElement API のラッパーユーティリティ
 /// ウィンドウの位置・サイズ取得/設定、タイトル取得、ウィンドウ列挙などを提供
 enum AccessibilityHelper {
@@ -31,16 +34,25 @@ enum AccessibilityHelper {
     /// ウィンドウがタイリング対象かどうか判定
     ///
     /// 条件:
-    /// - subrole が AXStandardWindow
+    /// - role が AXWindow
+    /// - subrole が AXStandardWindow もしくは空（シート・フローティング等を除外）
     /// - サイズ変更可能
     /// - 最小化されていない
     /// - サイズが 100x100 以上
     static func isTileable(_ window: AXUIElement) -> Bool {
-        // subrole チェック (シート・フローティング等を除外)
+        // role チェック
+        var roleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(window, kAXRoleAttribute as CFString, &roleRef)
+        let role = roleRef as? String ?? ""
+        guard role == kAXWindowRole as String else {
+            return false
+        }
+
+        // subrole チェック (シート・フローティング等を除外。空は許容)
         var subroleRef: CFTypeRef?
         AXUIElementCopyAttributeValue(window, kAXSubroleAttribute as CFString, &subroleRef)
         let subrole = subroleRef as? String ?? ""
-        guard subrole == kAXStandardWindowSubrole else {
+        if !subrole.isEmpty && subrole != kAXStandardWindowSubrole {
             Log.debug(tag, "isTileable=false subrole=\(subrole) title=\(getTitle(of: window) ?? "")")
             return false
         }
@@ -172,31 +184,11 @@ enum AccessibilityHelper {
 
     /// AXUIElement から CGWindowID を取得
     static func getWindowID(of window: AXUIElement) -> CGWindowID? {
-        var pid: pid_t = 0
-        AXUIElementGetPid(window, &pid)
-        let title = getTitle(of: window) ?? ""
-
-        let options: CGWindowListOption = [.excludeDesktopElements]
-        guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+        var windowID: CGWindowID = 0
+        guard _AXUIElementGetWindow(window, &windowID) == .success else {
             return nil
         }
-
-        let pidWindows = list.filter { ($0[kCGWindowOwnerPID as String] as? pid_t) == pid }
-
-        if !title.isEmpty {
-            for info in pidWindows {
-                let wName = info[kCGWindowName as String] as? String ?? ""
-                if wName == title, let wID = info[kCGWindowNumber as String] as? CGWindowID {
-                    return wID
-                }
-            }
-        }
-
-        if let first = pidWindows.first, let wID = first[kCGWindowNumber as String] as? CGWindowID {
-            return wID
-        }
-
-        return nil
+        return windowID
     }
 
     // MARK: - Minimize / Restore
