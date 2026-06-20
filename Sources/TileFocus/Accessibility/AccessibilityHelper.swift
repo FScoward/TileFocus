@@ -170,6 +170,9 @@ enum AccessibilityHelper {
         // 1. 先にサイズを設定（スナップやリサイズ制限を確定させる）
         let success = setSize(of: window, to: size)
         
+        // 20ミリ秒のスリープを入れてOSのWindowServerに処理の隙間を与える（要求の衝突防止）
+        usleep(20000)
+        
         // 2. その後に位置を設定（リサイズによる座標の戻りを防ぐ）
         setPosition(of: window, to: position)
         
