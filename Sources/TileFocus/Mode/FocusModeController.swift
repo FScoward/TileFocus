@@ -316,6 +316,21 @@ final class FocusModeController {
                 ? intersection.width * intersection.height : 0
             if area > bestArea { bestArea = area; bestIndex = i }
         }
+
+        // どのスクリーンとも交差しない場合（画面外に退避されている場合など）
+        if bestArea <= 0 {
+            var minDistance = CGFloat.greatestFiniteMagnitude
+            for (i, screen) in screens.enumerated() {
+                let screenCenterX = screen.frame.midX
+                let windowCenterX = appKitFrame.midX
+                let dist = abs(screenCenterX - windowCenterX)
+                if dist < minDistance {
+                    minDistance = dist
+                    bestIndex = i
+                }
+            }
+        }
+
         return bestIndex
     }
 }
