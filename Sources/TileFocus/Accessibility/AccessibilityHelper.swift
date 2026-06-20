@@ -97,20 +97,28 @@ enum AccessibilityHelper {
     /// PID と CGWindowID / タイトルで AXUIElement を検索する（マルチウィンドウアプリ対応）
     static func findWindow(for pid: pid_t, windowID: CGWindowID, title: String) -> AXUIElement? {
         let windows = getWindows(for: pid)
-        if windows.count <= 1 { return windows.first }
+        Log.debug(tag, "findWindow pid=\(pid) windowID=\(windowID) title=\"\(title)\" windowsCount=\(windows.count)")
+        if windows.count <= 1 {
+            Log.debug(tag, "  → windows.count <= 1, 返却: \(windows.first.flatMap { getTitle(of: $0) } ?? "nil")")
+            return windows.first
+        }
 
         // 1. CGWindowID で厳密にマッチング
         for window in windows {
-            if getWindowID(of: window) == windowID {
+            let wID = getWindowID(of: window) ?? 0
+            if wID == windowID {
+                Log.debug(tag, "  → CGWindowID 一致で返却: \"\(getTitle(of: window) ?? "")\" (windowID=\(wID))")
                 return window
             }
         }
 
         // 2. タイトルでマッチング（フォールバック）
         if !title.isEmpty, let match = windows.first(where: { getTitle(of: $0) == title }) {
+            Log.debug(tag, "  → タイトル一致で返却: \"\(title)\" (windowID=\(getWindowID(of: match) ?? 0))")
             return match
         }
 
+        Log.debug(tag, "  → マッチなし、first返却: \"\(windows.first.flatMap { getTitle(of: $0) } ?? "")\"")
         return windows.first
     }
 
@@ -157,9 +165,11 @@ enum AccessibilityHelper {
         let title = getTitle(of: window) ?? "?"
         var pid: pid_t = 0
         AXUIElementGetPid(window, &pid)
-        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" → pos=\(position) size=\(size)")
+        let beforeFrame = getFrame(of: window)
         setPosition(of: window, to: position)
-        return setSize(of: window, to: size)
+        let success = setSize(of: window, to: size)
+        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(success) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrame.map { "\($0)" } ?? "nil"))")
+        return success
     }
 
     /// ウィンドウを指定フレームに即時移動・リサイズ
@@ -185,7 +195,9 @@ enum AccessibilityHelper {
     /// AXUIElement から CGWindowID を取得
     static func getWindowID(of window: AXUIElement) -> CGWindowID? {
         var windowID: CGWindowID = 0
-        guard _AXUIElementGetWindow(window, &windowID) == .success else {
+        let result = _AXUIElementGetWindow(window, &windowID)
+        if result != .success {
+            Log.warn(tag, "getWindowID: _AXUIElementGetWindow 失敗 error=\(result.rawValue) title=\"\(getTitle(of: window) ?? "")\"")
             return nil
         }
         return windowID

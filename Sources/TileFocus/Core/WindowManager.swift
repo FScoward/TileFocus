@@ -389,10 +389,14 @@ final class WindowManager: ObservableObject {
     /// タイリングなどの非同期なウィンドウ移動が完了した後に呼び出してキャッシュの完全な同期を保証します
     func syncActualFrames() {
         var updatedFrames: [(id: String, frame: CGRect)] = []
+        Log.debug("WindowManager", "syncActualFrames 開始 managedWindows.count=\(managedWindows.count)")
         for window in managedWindows {
             if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title),
                let realFrame = AccessibilityHelper.getFrame(of: axWindow) {
+                Log.debug("WindowManager", "  [sync] \"\(window.appName) - \(window.title)\" frame: \(window.frame) -> \(realFrame) (idealSize=\(window.lastIdealSize.map { "\($0)" } ?? "nil") resizeFailed=\(window.isResizeFailed))")
                 updatedFrames.append((id: window.id, frame: realFrame))
+            } else {
+                Log.warn("WindowManager", "  [sync] \"\(window.appName) - \(window.title)\" AXWindow または Frame 取得失敗")
             }
         }
         updateFrames(updatedFrames)
