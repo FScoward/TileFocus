@@ -1,0 +1,6 @@
+.build/
+*.o
+*.swp
+*.DS_Store
+xcuserdata/
+*.xcuserstate
