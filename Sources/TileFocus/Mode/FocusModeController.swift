@@ -230,6 +230,8 @@ final class FocusModeController {
         var axWindowToFocus: AXUIElement? = nil
         // 配置後のフレームを記録（ManagedWindow.frame 更新用）
         var appliedFrames: [(id: String, frame: CGRect)] = []
+        // 配置指示した理想サイズを記録（次回のリサイズ制限チェック用）
+        var appliedIdealSizes: [(id: String, size: CGSize)] = []
 
         let gap = layout.gap
         let minSideWindowHeight = layout.minSideWindowHeight
@@ -268,14 +270,16 @@ final class FocusModeController {
                     // SIDE ウィンドウ
                     let idealFrame = idealFrames[min(i, idealFrames.count - 1)]
                     
-                    // 前回の実際の高さが理想の高さより大きい場合、それをこのウィンドウの最小高さ制限とみなす
+                    // 前回の実際の高さが、前回の理想の高さより大きい場合、それをこのウィンドウの最小高さ制限とみなす
                     // （ただし画面外退避されていた時の 200px は除外する。またリサイズ失敗したウィンドウも除外する）
                     let lastH = window.frame.height
                     let minH: CGFloat
                     if window.isResizeFailed {
                         minH = idealFrame.height
+                    } else if let lastIdeal = window.lastIdealSize, lastH > lastIdeal.height + 5 {
+                        minH = lastH
                     } else {
-                        minH = (lastH > 200 && lastH != idealFrame.height) ? lastH : idealFrame.height
+                        minH = idealFrame.height
                     }
                     
                     // 残り高さの計算
@@ -312,6 +316,10 @@ final class FocusModeController {
                 // 一旦、計算されたフレームを仮記録
                 appliedFrames.append((id: window.id, frame: targetFrame))
 
+                // 今回指定した理想サイズを記録
+                let idealSz = (i == 0) ? idealFrames[0].size : idealFrames[min(i, idealFrames.count - 1)].size
+                appliedIdealSizes.append((id: window.id, size: idealSz))
+
                 // フォーカスウィンドウの AX を記録（まだ focus() しない）
                 if window.id == focusedWindow?.id {
                     axWindowToFocus = axWindow
@@ -322,6 +330,7 @@ final class FocusModeController {
 
         // ManagedWindow.frame を配置後の値で更新（次回 screenIndex が stale フレームを使わないように）
         windowManager.updateFrames(appliedFrames)
+        windowManager.updateLastIdealSizes(appliedIdealSizes)
         Log.debug(Self.tag, "  ManagedWindow.frame 更新: \(appliedFrames.count)件")
 
         // 全ウィンドウ配置完了後に、フォーカスウィンドウだけ focus() する

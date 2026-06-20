@@ -33,6 +33,9 @@ struct ManagedWindow: Identifiable, Hashable {
     /// リサイズに失敗したことがあるか（画面共有やアスペクト比固定ウィンドウなどの考慮用）
     var isResizeFailed: Bool
 
+    /// 前回の配置で指示された理想のサイズ
+    var lastIdealSize: CGSize?
+
     // MARK: - Init
 
     init(
@@ -43,7 +46,8 @@ struct ManagedWindow: Identifiable, Hashable {
         bundleIdentifier: String? = nil,
         frame: CGRect,
         state: WindowState = .tiled,
-        isResizeFailed: Bool = false
+        isResizeFailed: Bool = false,
+        lastIdealSize: CGSize? = nil
     ) {
         self.id = "\(pid)-\(windowID)"
         self.pid = pid
@@ -54,6 +58,7 @@ struct ManagedWindow: Identifiable, Hashable {
         self.frame = frame
         self.state = state
         self.isResizeFailed = isResizeFailed
+        self.lastIdealSize = lastIdealSize
     }
 
     // MARK: - Hashable

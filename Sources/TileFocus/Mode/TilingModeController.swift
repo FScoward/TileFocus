@@ -103,6 +103,7 @@ final class TilingModeController {
         windowManager.setTilingInProgress(true)
 
         var appliedFrames: [(id: String, frame: CGRect)] = []
+        var appliedIdealSizes: [(id: String, size: CGSize)] = []
 
         for (idx, windows) in windowGroups.enumerated() {
             guard !windows.isEmpty else { continue }
@@ -127,10 +128,12 @@ final class TilingModeController {
                 windowManager.setResizeFailed(id: window.id, failed: !success)
                 // 一旦、計算された理想フレームを仮記録（非同期移動中のため直後の getFrame は古い値を返す）
                 appliedFrames.append((id: window.id, frame: targetFrame))
+                appliedIdealSizes.append((id: window.id, size: targetFrame.size))
             }
         }
 
         windowManager.updateFrames(appliedFrames)
+        windowManager.updateLastIdealSizes(appliedIdealSizes)
 
         // レイアウト適用後の残留通知を吧めるため少し遅らせて false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in

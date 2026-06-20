@@ -366,6 +366,15 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    /// 各ウィンドウの理想のサイズを更新する
+    func updateLastIdealSizes(_ entries: [(id: String, size: CGSize)]) {
+        for entry in entries {
+            if let idx = managedWindows.firstIndex(where: { $0.id == entry.id }) {
+                managedWindows[idx].lastIdealSize = entry.size
+            }
+        }
+    }
+
     /// レイアウト適用後の実際のフレームで ManagedWindow.frame を更新する
     /// stale なキャッシュを防ぎ、次回の screenIndex 計算を正確にする
     func updateFrames(_ frames: [(id: String, frame: CGRect)]) {
