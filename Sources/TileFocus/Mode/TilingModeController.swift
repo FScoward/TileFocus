@@ -75,68 +75,95 @@ final class TilingModeController {
 
     // MARK: - Private
 
-    /// 実際にタイリングを適用する（内部メソッド）
+    /// スクリーンごとにウィンドウをグループ化してタイリングを適用
     private func applyTiling() {
         guard let windowManager else { return }
         let tiledWindows = windowManager.managedWindows.filter { $0.state != .staged }
         guard !tiledWindows.isEmpty else { return }
 
-        let screenFrame = screenManager.primaryVisibleFrameForAX
-        let layout: any Layout
+        let screens = NSScreen.screens
+        guard !screens.isEmpty else { return }
 
-        if isAutoLayout {
-            layout = LayoutRegistry.recommendedLayout(for: tiledWindows.count)
-            windowManager.setCurrentLayout(layout)
-        } else {
-            layout = layouts[currentLayoutIndex]
+        // 各スクリーンにウィンドウをグループ化
+        // ウィンドウの現在位置から所属スクリーンを判定する
+        var windowGroups: [[ManagedWindow]] = Array(repeating: [], count: screens.count)
+        for window in tiledWindows {
+            let idx = screenIndex(for: window.frame, in: screens)
+            windowGroups[idx].append(window)
         }
 
-        let frames = layout.calculateFrames(
-            windowCount: tiledWindows.count,
-            screenFrame: screenFrame
-        )
-
-        // タイリング中フラグを立てて移動通知の無限ループを防ぐ
+        // タイリング適用中フラグ（AXWindowMovedNotification ループ防止）
         windowManager.setTilingInProgress(true)
         defer { windowManager.setTilingInProgress(false) }
 
-        for (index, window) in tiledWindows.enumerated() {
-            guard index < frames.count else { break }
-            let targetFrame = frames[index]
+        // 各スクリーンで独立してレイアウトを適用
+        for (idx, windows) in windowGroups.enumerated() {
+            guard !windows.isEmpty else { continue }
+            let screen = screens[idx]
+            let screenAXFrame = screenManager.visibleFrameInAX(for: screen)
 
-            // WindowID でマッチングして正しいウィンドウを特定
-            let axWindow = findAXWindow(for: window)
-            guard let axWindow else {
-                print("[TilingModeController] ウィンドウが見つかりません: \(window.appName) - \(window.title)")
-                continue
+            let layout = resolveLayout(for: windows.count)
+            let frames = layout.calculateFrames(
+                windowCount: windows.count,
+                screenFrame: screenAXFrame
+            )
+
+            print("[TilingModeController] スクリーン[\(idx)] \(windows.count)ウィンドウ → \(layout.name)")
+            print("  screenAXFrame: \(screenAXFrame)")
+
+            for (i, window) in windows.enumerated() {
+                guard i < frames.count else { break }
+                let targetFrame = frames[i]
+
+                print("  [\(i)] \(window.appName) → \(targetFrame)")
+
+                guard let axWindow = findAXWindow(for: window) else {
+                    print("  [\(i)] ⚠️ AXウィンドウが見つかりません")
+                    continue
+                }
+                AccessibilityHelper.moveAndResize(
+                    window: axWindow,
+                    to: targetFrame.origin,
+                    size: targetFrame.size
+                )
             }
-
-            // アニメーションなしで直接移動（asyncAfter による連鎖を防ぐ）
-            AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
         }
 
-        print("[TilingModeController] タイリング適用: \(tiledWindows.count) ウィンドウ, レイアウト: \(layout.name)")
+        // レイアウト名を表示用に設定（スクリーン0の状態を代表値として使用）
+        if let primaryWindows = windowGroups.first(where: { !$0.isEmpty }) {
+            let layout = resolveLayout(for: primaryWindows.count)
+            windowManager.setCurrentLayout(layout)
+        }
     }
 
-    /// ManagedWindow に対応する AXUIElement を探す
-    private func findAXWindow(for managed: ManagedWindow) -> AXUIElement? {
-        let axWindows = AccessibilityHelper.getWindows(for: managed.pid)
-        guard !axWindows.isEmpty else { return nil }
-
-        // WindowID が 0（不明）の場合は最初のウィンドウを返す
-        if managed.windowID == 0 {
-            return axWindows.first
-        }
-
-        // タイトルで一致するウィンドウを探す
-        for axWindow in axWindows {
-            let title = AccessibilityHelper.getTitle(of: axWindow) ?? ""
-            if title == managed.title {
-                return axWindow
+    /// 指定した AX フレームが最もよく含まれるスクリーンのインデックスを返す
+    private func screenIndex(for axFrame: CGRect, in screens: [NSScreen]) -> Int {
+        let appKitFrame = screenManager.axToAppKit(axFrame)
+        var bestIndex = 0
+        var bestArea: CGFloat = -1
+        for (i, screen) in screens.enumerated() {
+            let intersection = screen.frame.intersection(appKitFrame)
+            let area = intersection.width > 0 && intersection.height > 0
+                ? intersection.width * intersection.height
+                : 0
+            if area > bestArea {
+                bestArea = area
+                bestIndex = i
             }
         }
+        return bestIndex
+    }
 
-        // フォールバック: 最初のウィンドウ
-        return axWindows.first
+    /// ウィンドウ数に応じたレイアウトを解決する
+    private func resolveLayout(for count: Int) -> any Layout {
+        if isAutoLayout {
+            return LayoutRegistry.recommendedLayout(for: count)
+        }
+        return layouts[currentLayoutIndex]
+    }
+
+    /// ManagedWindow に対応する AXUIElement を見つける（タイトルマッチ優先）
+    private func findAXWindow(for managed: ManagedWindow) -> AXUIElement? {
+        AccessibilityHelper.findWindow(for: managed.pid, title: managed.title)
     }
 }

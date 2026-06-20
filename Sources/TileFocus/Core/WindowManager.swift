@@ -194,12 +194,8 @@ final class WindowManager: ObservableObject {
                 // 最小サイズフィルタ（ツールウィンドウ等を除外）
                 guard frame.width >= 100 && frame.height >= 100 else { continue }
 
-                // 画面外のウィンドウ（最小化済み等）を除外
-                let isOffScreen = NSScreen.screens.allSatisfy { screen in
-                    let axFrame = ScreenManager().convertToAppKitCoordinates(frame, in: screen)
-                    return !screen.frame.intersects(axFrame)
-                }
-                guard !isOffScreen else { continue }
+                // 最小化ウィンドウを除外
+                if AccessibilityHelper.isMinimized(axWindow) { continue }
 
                 let title = AccessibilityHelper.getTitle(of: axWindow) ?? ""
                 let windowID = AccessibilityHelper.getWindowID(of: axWindow) ?? 0
