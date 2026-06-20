@@ -21,15 +21,54 @@ enum AccessibilityHelper {
         return windows
     }
 
+    /// タイリング可能なウィンドウのみを返す（シート・パネル・最小化を除外）
+    static func getTileableWindows(for pid: pid_t) -> [AXUIElement] {
+        getWindows(for: pid).filter { isTileable($0) }
+    }
+
+    /// ウィンドウがタイリング対象かどうか判定
+    ///
+    /// 条件:
+    /// - subrole が AXStandardWindow
+    /// - サイズ変更可能
+    /// - 最小化されていない
+    /// - サイズが 100x100 以上
+    static func isTileable(_ window: AXUIElement) -> Bool {
+        // subrole チェック (シート・フローティング等を除外)
+        var subroleRef: CFTypeRef?
+        AXUIElementCopyAttributeValue(window, kAXSubroleAttribute as CFString, &subroleRef)
+        let subrole = subroleRef as? String ?? ""
+        guard subrole == kAXStandardWindowSubrole else { return false }
+
+        // リサイズ可能かチェック
+        var settable: DarwinBoolean = false
+        AXUIElementIsAttributeSettable(window, kAXSizeAttribute as CFString, &settable)
+        guard settable.boolValue else { return false }
+
+        // 最小化されていないかチェック
+        if isMinimized(window) { return false }
+
+        // 最小サイズチェック
+        guard let frame = getFrame(of: window),
+              frame.width >= 100, frame.height >= 100 else { return false }
+
+        return true
+    }
+
+    /// ウィンドウがメインウィンドウ（フォーカス中）か判定
+    static func isMainWindow(_ window: AXUIElement) -> Bool {
+        var value: CFTypeRef?
+        AXUIElementCopyAttributeValue(window, kAXMainAttribute as CFString, &value)
+        return (value as? Bool) ?? false
+    }
+
     /// タイトルで AXUIElement を検索する（マルチウィンドウアプリ対応）
     static func findWindow(for pid: pid_t, title: String) -> AXUIElement? {
         let windows = getWindows(for: pid)
         if title.isEmpty { return windows.first }
-        // タイトル完全一致
         if let match = windows.first(where: { getTitle(of: $0) == title }) {
             return match
         }
-        // フォールバック: 最初のウィンドウ
         return windows.first
     }
 

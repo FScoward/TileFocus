@@ -172,31 +172,44 @@ final class WindowManager: ObservableObject {
 
     // MARK: - Window List Management
 
-    /// ウィンドウリストを再取得（フィルタリング強化版）
+    /// ウィンドウリストを再取得
+    ///
+    /// 順序: フロントアプリのメインウィンドウ → その他のアプリのウィンドウ
     func refreshWindowList() {
         let selfPid = ProcessInfo.processInfo.processIdentifier
+        let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let running = NSWorkspace.shared.runningApplications
         var windows: [ManagedWindow] = []
 
-        for app in running {
-            // 自分自身は除外
-            if app.processIdentifier == selfPid { continue }
-            // 通常の UI アプリのみ
-            guard app.activationPolicy == .regular,
-                  let localizedName = app.localizedName else { continue }
+        // フロントアプリを先頭に処理するため、並び替え
+        var sortedApps = running.filter { app in
+            app.processIdentifier != selfPid
+                && app.activationPolicy == .regular
+                && app.localizedName != nil
+        }
+        sortedApps.sort { a, b in
+            if a.processIdentifier == frontPid { return true }
+            if b.processIdentifier == frontPid { return false }
+            return false
+        }
 
+        for app in sortedApps {
             let pid = app.processIdentifier
+            let localizedName = app.localizedName!
+
+            // isTileable でフィルタリング（標準ウィンドウ・リサイズ可能・非最小化）
             let axWindows = AccessibilityHelper.getWindows(for: pid)
+                .filter { AccessibilityHelper.isTileable($0) }
 
-            for axWindow in axWindows {
+            guard !axWindows.isEmpty else { continue }
+
+            // 各アプリ内でメインウィンドウを先頭にソート
+            let sortedWins = axWindows.sorted { a, _ in
+                AccessibilityHelper.isMainWindow(a)
+            }
+
+            for axWindow in sortedWins {
                 guard let frame = AccessibilityHelper.getFrame(of: axWindow) else { continue }
-
-                // 最小サイズフィルタ（ツールウィンドウ等を除外）
-                guard frame.width >= 100 && frame.height >= 100 else { continue }
-
-                // 最小化ウィンドウを除外
-                if AccessibilityHelper.isMinimized(axWindow) { continue }
-
                 let title = AccessibilityHelper.getTitle(of: axWindow) ?? ""
                 let windowID = AccessibilityHelper.getWindowID(of: axWindow) ?? 0
 
@@ -213,7 +226,10 @@ final class WindowManager: ObservableObject {
         }
 
         managedWindows = windows
-        print("[WindowManager] ウィンドウリスト更新: \(windows.count) 件")
+        print("[WindowManager] ウィンドウリスト更新: \(windows.count) 件 (front=\(frontPid.map(String.init) ?? "none"))")
+        for (i, w) in windows.enumerated() {
+            print("  [\(i)] \(w.appName) - \(w.title) frame=\(w.frame)")
+        }
     }
 
     /// ウィンドウを追加（新規作成時）
