@@ -332,6 +332,8 @@ final class WindowManager: ObservableObject {
         managedWindows.append(window)
         if currentMode == .tiling {
             tilingController?.retile()
+        } else if currentMode == .focus {
+            focusController?.scheduleLayoutUpdate()
         }
     }
 
@@ -341,6 +343,8 @@ final class WindowManager: ObservableObject {
         stagedWindows.removeAll { $0.id == id }
         if currentMode == .tiling {
             tilingController?.retile()
+        } else if currentMode == .focus {
+            focusController?.handleWindowClosed(id: id)
         }
     }
 

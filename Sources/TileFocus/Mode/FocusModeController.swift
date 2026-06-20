@@ -16,6 +16,7 @@ final class FocusModeController {
     // MARK: - State
 
     private var focusedWindowID: String?
+    private var masterWindowID: String?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var updateWorkItem: DispatchWorkItem?
     /// applyLayout() 実行中フラグ
@@ -50,7 +51,6 @@ final class FocusModeController {
                     return
                 }
                 self.updateFocusedWindow(runningApp: app)
-                self.scheduleLayoutUpdate()
             }
         }
 
@@ -68,6 +68,7 @@ final class FocusModeController {
         }
         workspaceObservers = []
         focusedWindowID = nil
+        masterWindowID = nil
     }
 
     // MARK: - Focus Control
@@ -126,7 +127,7 @@ final class FocusModeController {
 
     func switchMainWindow(to windowID: String) {
         Log.info(Self.tag, "switchMainWindow() 引数 windowID=\(windowID)")
-        Log.info(Self.tag, "  現在の focusedWindowID=\(focusedWindowID ?? "nil")")
+        Log.info(Self.tag, "  現在の focusedWindowID=\(focusedWindowID ?? "nil"), masterWindowID=\(masterWindowID ?? "nil")")
         Log.info(Self.tag, "  isApplyingLayout=\(isApplyingLayout)")
 
         // managedWindows の状態も記録
@@ -136,15 +137,17 @@ final class FocusModeController {
             for (i, w) in windows.enumerated() {
                 let isTarget = w.id == windowID ? " ← ターゲット" : ""
                 let isCurrent = w.id == focusedWindowID ? " ← 現在フォーカス" : ""
-                Log.info(Self.tag, "    [\(i)] \"\(w.appName) - \(w.title)\" id=\(w.id)\(isTarget)\(isCurrent)")
+                let isMaster = w.id == masterWindowID ? " ← 現在マスター" : ""
+                Log.info(Self.tag, "    [\(i)] \"\(w.appName) - \(w.title)\" id=\(w.id)\(isTarget)\(isCurrent)\(isMaster)")
             }
         }
 
-        guard focusedWindowID != windowID else {
-            Log.debug(Self.tag, "switchMainWindow: 変更なし (already \(windowID))")
+        guard masterWindowID != windowID || focusedWindowID != windowID else {
+            Log.debug(Self.tag, "switchMainWindow: 変更なし (already master and focused)")
             return
         }
-        Log.info(Self.tag, "  切り替え: \(focusedWindowID ?? "nil") → \(windowID)")
+        Log.info(Self.tag, "  マスター切り替え: \(masterWindowID ?? "nil") → \(windowID)")
+        masterWindowID = windowID
         setFocusedWindowID(windowID)
         applyLayout()
     }
@@ -165,9 +168,27 @@ final class FocusModeController {
             if match.id != focusedWindowID {
                 Log.info(Self.tag, "handleFocusChanged: フォーカス自動変更 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
                 setFocusedWindowID(match.id)
-                scheduleLayoutUpdate()
             }
         }
+    }
+
+    /// ウィンドウが閉じられた時の処理
+    func handleWindowClosed(id: String) {
+        Log.info(Self.tag, "handleWindowClosed() windowID=\(id)")
+        if masterWindowID == id {
+            if let windowManager {
+                let remaining = windowManager.managedWindows.filter { $0.id != id && $0.state != .staged }
+                if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
+                    masterWindowID = nextMaster.id
+                } else {
+                    masterWindowID = nil
+                }
+            } else {
+                masterWindowID = nil
+            }
+            Log.info(Self.tag, "  マスターウィンドウが閉じられたため、新しいマスターに設定: \(masterWindowID ?? "nil")")
+        }
+        scheduleLayoutUpdate()
     }
 
     // MARK: - Private Helpers
@@ -201,18 +222,26 @@ final class FocusModeController {
             return
         }
 
-        // フォーカスウィンドウを先頭に並び替え
+        // マスターウィンドウを先頭に並び替え
         var ordered = windows
-        var focusedWindow: ManagedWindow? = nil
-        if let focusedID = focusedWindowID,
-           let idx = ordered.firstIndex(where: { $0.id == focusedID }) {
-            let focused = ordered.remove(at: idx)
-            ordered.insert(focused, at: 0)
-            focusedWindow = focused
-            Log.debug(Self.tag, "  先頭(フォーカス): \"\(focused.appName) - \(focused.title)\"")
+        
+        // masterWindowID が無効なら focusedWindowID をマスターとして設定
+        if let masterID = masterWindowID, ordered.contains(where: { $0.id == masterID }) {
+            if let idx = ordered.firstIndex(where: { $0.id == masterID }) {
+                let master = ordered.remove(at: idx)
+                ordered.insert(master, at: 0)
+                Log.debug(Self.tag, "  先頭(マスター): \"\(master.appName) - \(master.title)\"")
+            }
         } else {
-            Log.warn(Self.tag, "  focusedID が managedWindows に存在しない → 先頭をそのまま使用")
-            focusedWindow = ordered.first
+            if let focusedID = focusedWindowID, let idx = ordered.firstIndex(where: { $0.id == focusedID }) {
+                let focused = ordered.remove(at: idx)
+                ordered.insert(focused, at: 0)
+                masterWindowID = focused.id
+                Log.info(Self.tag, "  マスター未指定または消失 ➔ フォーカスウィンドウをマスターに設定: \"\(focused.appName)\"")
+            } else if let first = ordered.first {
+                masterWindowID = first.id
+                Log.warn(Self.tag, "  フォーカスなし ➔ 先頭をマスターに設定: \"\(first.appName)\"")
+            }
         }
 
         // スクリーン別グループ化
@@ -321,7 +350,7 @@ final class FocusModeController {
                 appliedIdealSizes.append((id: window.id, size: idealSz))
 
                 // フォーカスウィンドウの AX を記録（まだ focus() しない）
-                if window.id == focusedWindow?.id {
+                if window.id == focusedWindowID {
                     axWindowToFocus = axWindow
                     Log.debug(Self.tag, "    → focus 予定: \"\(window.appName)\"")
                 }
@@ -335,7 +364,8 @@ final class FocusModeController {
 
         // 全ウィンドウ配置完了後に、フォーカスウィンドウだけ focus() する
         if let axWindowToFocus {
-            Log.info(Self.tag, "  focus() 実行: \"\(focusedWindow?.appName ?? "?")\"")
+            let focusName = windowManager.managedWindows.first(where: { $0.id == focusedWindowID })?.appName ?? "?"
+            Log.info(Self.tag, "  focus() 実行: \"\(focusName)\"")
             AccessibilityHelper.focus(window: axWindowToFocus)
         }
 
