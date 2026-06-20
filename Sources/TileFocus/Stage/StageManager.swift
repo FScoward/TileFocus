@@ -27,7 +27,7 @@ final class StageManager {
 
         // ウィンドウを画面外に即時移動（animateMoveAndResize は使わない）
         let hiddenPosition = CGPoint(x: stagingX, y: window.frame.origin.y)
-        if let axWindow = AccessibilityHelper.findWindow(for: window.pid, title: window.title) {
+        if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) {
             windowManager.setTilingInProgress(true)
             AccessibilityHelper.moveAndResize(
                 window: axWindow,
@@ -67,7 +67,7 @@ final class StageManager {
         restoredWindow.frameBeforeStaging = nil
 
         // ウィンドウを元の位置に即時移動（animateMoveAndResize は使わない）
-        if let axWindow = AccessibilityHelper.findWindow(for: window.pid, title: window.title) {
+        if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) {
             windowManager.setTilingInProgress(true)
             AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
             windowManager.setTilingInProgress(false)

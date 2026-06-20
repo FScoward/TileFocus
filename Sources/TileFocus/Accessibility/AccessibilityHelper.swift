@@ -76,13 +76,23 @@ enum AccessibilityHelper {
         return (value as? Bool) ?? false
     }
 
-    /// タイトルで AXUIElement を検索する（マルチウィンドウアプリ対応）
-    static func findWindow(for pid: pid_t, title: String) -> AXUIElement? {
+    /// PID と CGWindowID / タイトルで AXUIElement を検索する（マルチウィンドウアプリ対応）
+    static func findWindow(for pid: pid_t, windowID: CGWindowID, title: String) -> AXUIElement? {
         let windows = getWindows(for: pid)
-        if title.isEmpty { return windows.first }
-        if let match = windows.first(where: { getTitle(of: $0) == title }) {
+        if windows.count <= 1 { return windows.first }
+
+        // 1. CGWindowID で厳密にマッチング
+        for window in windows {
+            if getWindowID(of: window) == windowID {
+                return window
+            }
+        }
+
+        // 2. タイトルでマッチング（フォールバック）
+        if !title.isEmpty, let match = windows.first(where: { getTitle(of: $0) == title }) {
             return match
         }
+
         return windows.first
     }
 

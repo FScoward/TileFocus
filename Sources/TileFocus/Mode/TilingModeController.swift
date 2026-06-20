@@ -182,6 +182,6 @@ final class TilingModeController {
     }
 
     private func findAXWindow(for managed: ManagedWindow) -> AXUIElement? {
-        AccessibilityHelper.findWindow(for: managed.pid, title: managed.title)
+        AccessibilityHelper.findWindow(for: managed.pid, windowID: managed.windowID, title: managed.title)
     }
 }

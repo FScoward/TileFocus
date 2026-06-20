@@ -259,7 +259,7 @@ final class FocusModeController {
 
                 Log.info(Self.tag, "    \(role) \"\(window.appName) - \(window.title)\" → \(targetFrame)")
 
-                guard let axWindow = AccessibilityHelper.findWindow(for: window.pid, title: window.title) else {
+                guard let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) else {
                     Log.error(Self.tag, "    ⚠️ AXウィンドウが見つかりません pid=\(window.pid) title=\(window.title)")
                     continue
                 }
