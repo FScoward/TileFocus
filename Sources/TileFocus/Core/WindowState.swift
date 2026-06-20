@@ -21,6 +21,7 @@ enum AppMode: String, CaseIterable, Identifiable {
     case off
     case tiling
     case focus
+    case stage
 
     var id: String { rawValue }
 
@@ -29,6 +30,7 @@ enum AppMode: String, CaseIterable, Identifiable {
         case .off: return "オフ"
         case .tiling: return "Tiling Mode"
         case .focus: return "Focus Mode"
+        case .stage: return "Stage Mode"
         }
     }
 
@@ -37,6 +39,7 @@ enum AppMode: String, CaseIterable, Identifiable {
         case .off: return "rectangle.slash"
         case .tiling: return "rectangle.3.group"
         case .focus: return "rectangle.center.inset.filled"
+        case .stage: return "square.leadingthird.inset.filled"
         }
     }
 
@@ -45,6 +48,7 @@ enum AppMode: String, CaseIterable, Identifiable {
         case .off: return .secondary
         case .tiling: return .blue
         case .focus: return .purple
+        case .stage: return .orange
         }
     }
 
@@ -53,6 +57,7 @@ enum AppMode: String, CaseIterable, Identifiable {
         case .off: return ""
         case .tiling: return "⌃⌘T"
         case .focus: return "⌃⌘F"
+        case .stage: return "⌃⌘S"
         }
     }
 }

@@ -152,7 +152,11 @@ struct MenuBarView: View {
 
             ForEach(windowManager.stagedWindows) { window in
                 Button {
-                    windowManager.unstageWindow(window)
+                    if windowManager.currentMode == .stage {
+                        windowManager.switchStageActiveWindow(to: window.id)
+                    } else {
+                        windowManager.unstageWindow(window)
+                    }
                 } label: {
                     HStack {
                         Image(systemName: "app.badge")
@@ -160,7 +164,7 @@ struct MenuBarView: View {
                         Text(window.title.isEmpty ? window.appName : window.title)
                             .lineLimit(1)
                         Spacer()
-                        Text("復帰")
+                        Text(windowManager.currentMode == .stage ? "切り替え" : "復帰")
                             .font(.caption)
                             .foregroundStyle(.blue)
                     }
@@ -289,16 +293,13 @@ struct MenuBarView: View {
                         .frame(width: 16)
                     Text("フォーカスウィンドウを格納")
                     Spacer()
-                    Text("⌃⌘S")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
             }
             .buttonStyle(.plain)
             .padding(.horizontal, 12)
             .padding(.vertical, 5)
             .padding(.horizontal, 4)
-            .disabled(windowManager.currentMode == .off)
+            .disabled(windowManager.currentMode == .off || windowManager.currentMode == .stage)
 
             Button {
                 windowManager.unstageAllWindows()

@@ -32,6 +32,7 @@ final class WindowManager: ObservableObject {
 
     private var tilingController: TilingModeController?
     private var focusController: FocusModeController?
+    private var stageController: StageModeController?
     private var stageManager: StageManager?
     private var windowObserver: WindowObserver?
     private var hotKeyManager: HotKeyManager?
@@ -61,6 +62,9 @@ final class WindowManager: ObservableObject {
 
         let focusController = FocusModeController(windowManager: self)
         self.focusController = focusController
+
+        let stageController = StageModeController(windowManager: self)
+        self.stageController = stageController
 
         // ウィンドウ監視開始
         let observer = WindowObserver()
@@ -102,6 +106,8 @@ final class WindowManager: ObservableObject {
             tilingController?.activate()
         case .focus:
             focusController?.activate()
+        case .stage:
+            stageController?.activate()
         }
 
         print("[WindowManager] モード切り替え: \(newMode.displayName)")
@@ -115,6 +121,8 @@ final class WindowManager: ObservableObject {
             tilingController?.deactivate()
         case .focus:
             focusController?.deactivate()
+        case .stage:
+            stageController?.deactivate()
         }
     }
 
@@ -213,6 +221,10 @@ final class WindowManager: ObservableObject {
             // Focus Mode: FocusModeController に委譲
             Log.info(tag, "  Focus Mode → switchMainWindow(to: \(managed.id))")
             focusController?.switchMainWindow(to: managed.id)
+        case .stage:
+            // Stage Mode: StageModeController に委譲
+            Log.info(tag, "  Stage Mode → switchActiveWindow(to: \(managed.id))")
+            stageController?.switchActiveWindow(to: managed.id)
         case .off:
             break
         }
@@ -251,6 +263,12 @@ final class WindowManager: ObservableObject {
     /// 格納ウィンドウを復帰させる
     func unstageWindow(_ window: ManagedWindow) {
         stageManager?.unstage(window: window, windowManager: self)
+    }
+
+    /// Stage Mode でアクティブウィンドウを切り替える
+    func switchStageActiveWindow(to windowID: String) {
+        guard currentMode == .stage else { return }
+        stageController?.switchActiveWindow(to: windowID)
     }
 
     /// 全格納ウィンドウを復帰
@@ -334,6 +352,8 @@ final class WindowManager: ObservableObject {
             tilingController?.retile()
         } else if currentMode == .focus {
             focusController?.scheduleLayoutUpdate()
+        } else if currentMode == .stage {
+            stageController?.scheduleLayoutUpdate()
         }
     }
 
@@ -345,6 +365,8 @@ final class WindowManager: ObservableObject {
             tilingController?.retile()
         } else if currentMode == .focus {
             focusController?.handleWindowClosed(id: id)
+        } else if currentMode == .stage {
+            stageController?.handleWindowClosed(id: id)
         }
     }
 
@@ -456,8 +478,11 @@ extension WindowManager: WindowObserverDelegate {
         title: String
     ) {
         Task { @MainActor in
-            guard currentMode == .focus else { return }
-            focusController?.handleFocusChanged(pid: pid, title: title)
+            if currentMode == .focus {
+                focusController?.handleFocusChanged(pid: pid, title: title)
+            } else if currentMode == .stage {
+                stageController?.handleFocusChanged(pid: pid, title: title)
+            }
         }
     }
 }

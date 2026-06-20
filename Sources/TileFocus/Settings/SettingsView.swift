@@ -98,7 +98,7 @@ private struct HotKeySettingsTab: View {
     private let hotKeys: [(String, String)] = [
         ("Tiling Mode ON/OFF", "⌃⌘T"),
         ("Focus Mode ON/OFF", "⌃⌘F"),
-        ("フォーカスウィンドウを格納", "⌃⌘S"),
+        ("Stage Mode ON/OFF", "⌃⌘S"),
         ("格納ウィンドウを全復帰", "⌃⌘R"),
         ("次のレイアウト", "⌃⌘→"),
         ("前のレイアウト", "⌃⌘←")
