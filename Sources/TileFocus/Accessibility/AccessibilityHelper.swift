@@ -165,22 +165,40 @@ enum AccessibilityHelper {
         let title = getTitle(of: window) ?? "?"
         var pid: pid_t = 0
         AXUIElementGetPid(window, &pid)
-        let beforeFrame = getFrame(of: window)
+        let beforeFrame = getFrame(of: window) ?? CGRect.zero
         
-        // 1. 先にサイズを設定（小さくしてから移動させることで、ディスプレイを跨ぐ移動時のOS制限を回避）
-        let success = setSize(of: window, to: size)
+        // 幅か高さのどちらかが大きくなる場合は「拡大」と判定
+        let isExpanding = size.width > beforeFrame.width || size.height > beforeFrame.height
         
-        // 200ミリ秒のスリープを入れてOSのサイズ設定の完了を待つ（検証結果より200msが最適）
-        usleep(200000)
-        
-        // 2. 最後に位置を設定
-        setPosition(of: window, to: position)
-        
-        // 位置設定がOSで処理されるのを少し待つ
-        usleep(50000)
+        let success: Bool
+        if isExpanding {
+            // 拡大する場合：先に位置を移動させてから、サイズを大きくする
+            // (古いディスプレイのサイズ制限に引っかからないようにするため)
+            setPosition(of: window, to: position)
+            
+            // 200ミリ秒のスリープを入れてOSの位置設定の完了を待つ
+            usleep(200000)
+            
+            success = setSize(of: window, to: size)
+            
+            // サイズ設定がOSで処理されるのを少し待つ
+            usleep(50000)
+        } else {
+            // 縮小する場合：先にサイズを小さくしてから、位置を移動させる
+            // (巨大なウィンドウのままディスプレイ間を跨ぐとOSに移動を制限されるため)
+            success = setSize(of: window, to: size)
+            
+            // 200ミリ秒のスリープを入れてOSのサイズ設定の完了を待つ
+            usleep(200000)
+            
+            setPosition(of: window, to: position)
+            
+            // 位置設定がOSで処理されるのを少し待つ
+            usleep(50000)
+        }
         
         let afterFrame = getFrame(of: window)
-        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(success) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrame.map { "\($0)" } ?? "nil") afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
+        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(success) isExpanding=\(isExpanding) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrame) afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
         return success
     }
 
