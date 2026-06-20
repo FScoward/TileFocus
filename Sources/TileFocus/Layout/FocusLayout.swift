@@ -1,26 +1,23 @@
 import Foundation
 
-/// Focus Mode のレイアウト計算
+/// Focus Mode のレイアウト計算 (Centered Focus: 中央メイン、左右サブ)
 ///
-/// フォーカスウィンドウを左 70% に大きく表示し、
-/// 他のウィンドウを右サイドバーに縦積みする。
-/// サイドウィンドウが多い場合は最大表示数を制限して 1 枚の最小高さを保つ。
+/// フォーカスウィンドウを中央に大きく表示し、
+/// 他のウィンドウを左右のサイドバーに交互に縦積みする。
 ///
 /// ```
-/// ┌─────────────────┬──────┐
-/// │                 │  W2  │
-/// │                 ├──────┤
-/// │   フォーカス     │  W3  │
-/// │   ウィンドウ     ├──────┤
-/// │                 │  W4  │
-/// └─────────────────┴──────┘
+/// ┌──────┬─────────────────┬──────┐
+/// │  W2  │                 │  W3  │
+/// ├──────┤   フォーカス    ├──────┤
+/// │  W4  │   ウィンドウ    │  W5  │
+/// └──────┴─────────────────┴──────┘
 /// ```
 struct FocusLayout: Layout {
     var name: String { "Focus" }
     var gap: TilingGap = TilingGap(outer: 8, inner: 6)
 
     /// メインウィンドウの幅比率（全体の何 %）
-    var mainWidthRatio: CGFloat = 0.70
+    var mainWidthRatio: CGFloat = 0.60
 
     /// サイドバーの 1 ウィンドウあたりの最小高さ（px）
     /// これを下回る場合はウィンドウを表示しない（truncate）
@@ -41,33 +38,63 @@ struct FocusLayout: Layout {
             return [CGRect(x: startX, y: startY, width: totalW, height: totalH)]
         }
 
-        // メインウィンドウ（左側）
-        let mainW = (totalW - inner) * mainWidthRatio
-        let mainFrame = CGRect(x: startX, y: startY, width: mainW, height: totalH)
-
-        // サイドバー領域
-        let sideX = startX + mainW + inner
-        let sideW = totalW - mainW - inner
-
-        // サイドウィンドウの最大表示数を計算
-        // 高さ minSideWindowHeight を下回らないよう制限
-        let maxSideCount = max(1, Int((totalH + inner) / (minSideWindowHeight + inner)))
-        let sideCount = min(windowCount - 1, maxSideCount)
-
-        guard sideCount > 0 else {
-            return [mainFrame]
+        let totalSideCount = windowCount - 1
+        
+        // 左右のサイドバーに割り振るウィンドウ数を計算
+        // i = 1, 3, 5... (奇数番目のサブ) は左、i = 2, 4, 6... (偶数番目のサブ) は右
+        var leftCount = 0
+        var rightCount = 0
+        for i in 1...totalSideCount {
+            if i % 2 == 1 {
+                leftCount += 1
+            } else {
+                rightCount += 1
+            }
         }
 
-        let sideH = (totalH - inner * CGFloat(sideCount - 1)) / CGFloat(sideCount)
+        // メインウィンドウとサイドバーの幅・位置
+        let mainW = (totalW - inner * 2) * mainWidthRatio
+        let remainingW = (totalW - inner * 2) - mainW
+        let sideW = remainingW / 2
+
+        let leftX = startX
+        let centerX = startX + sideW + inner
+        let rightX = centerX + mainW + inner
+
+        let mainFrame = CGRect(x: centerX, y: startY, width: mainW, height: totalH)
+
+        // 左右の最大表示数を計算
+        let maxSideCount = max(1, Int((totalH + inner) / (minSideWindowHeight + inner)))
+        
+        let leftDisplayCount = min(leftCount, maxSideCount)
+        let rightDisplayCount = min(rightCount, maxSideCount)
+
+        let leftH = leftDisplayCount > 0 ? (totalH - inner * CGFloat(leftDisplayCount - 1)) / CGFloat(leftDisplayCount) : 0
+        let rightH = rightDisplayCount > 0 ? (totalH - inner * CGFloat(rightDisplayCount - 1)) / CGFloat(rightDisplayCount) : 0
 
         var frames = [mainFrame]
-        for i in 0..<sideCount {
-            let sideY = startY + CGFloat(i) * (sideH + inner)
-            frames.append(CGRect(x: sideX, y: sideY, width: sideW, height: sideH))
+        
+        var currentLeftIdx = 0
+        var currentRightIdx = 0
+        
+        for i in 1...totalSideCount {
+            if i % 2 == 1 {
+                // 左サイドバー
+                if currentLeftIdx < leftDisplayCount {
+                    let sideY = startY + CGFloat(currentLeftIdx) * (leftH + inner)
+                    frames.append(CGRect(x: leftX, y: sideY, width: sideW, height: leftH))
+                    currentLeftIdx += 1
+                }
+            } else {
+                // 右サイドバー
+                if currentRightIdx < rightDisplayCount {
+                    let sideY = startY + CGFloat(currentRightIdx) * (rightH + inner)
+                    frames.append(CGRect(x: rightX, y: sideY, width: sideW, height: rightH))
+                    currentRightIdx += 1
+                }
+            }
         }
 
-        // 表示しきれなかったウィンドウは画面外（サイドバー末尾の直下）に格納
-        // → そのまま返すだけ (frames.count < windowCount の場合、呼び出し側で break する)
         return frames
     }
 }

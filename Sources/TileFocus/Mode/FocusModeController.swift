@@ -283,8 +283,15 @@ final class FocusModeController {
 
             let idealFrames = layout.calculateFrames(windowCount: group.count, screenFrame: screenAXFrame)
 
-            // サイドバーの配置 Y 座標の追跡
-            var currentSideY = screenAXFrame.minY + gap.outer
+            // 左右サイドバーの配置 Y 座標の追跡
+            var currentLeftY = screenAXFrame.minY + gap.outer
+            var currentRightY = screenAXFrame.minY + gap.outer
+
+            // 実際のメインウィンドウの配置結果から決定される左右サイドバー of X 座標と幅
+            var actualLeftX: CGFloat? = nil
+            var actualLeftW: CGFloat? = nil
+            var actualRightX: CGFloat? = nil
+            var actualRightW: CGFloat? = nil
 
             for (i, window) in group.enumerated() {
                 guard let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) else {
@@ -300,6 +307,8 @@ final class FocusModeController {
 
                 let targetFrame: CGRect
                 let role: String
+                var isLeftWindow = false
+                var isRightWindow = false
 
                 if i == 0 {
                     // MAIN ウィンドウは常に理想通りのサイズで配置
@@ -321,26 +330,31 @@ final class FocusModeController {
                         minH = idealFrame.height
                     }
                     
-                    // 残り高さの計算
-                    let remainingH = (screenAXFrame.minY + screenAXFrame.height - gap.outer) - currentSideY
+                    let isLeft = (i % 2 == 1)
+                    let currentY = isLeft ? currentLeftY : currentRightY
                     
-                    if remainingH >= minSideWindowHeight && currentSideY + minSideWindowHeight <= screenAXFrame.minY + screenAXFrame.height - gap.outer {
+                    // 残り高さの計算
+                    let remainingH = (screenAXFrame.minY + screenAXFrame.height - gap.outer) - currentY
+                    
+                    if remainingH >= minSideWindowHeight && currentY + minSideWindowHeight <= screenAXFrame.minY + screenAXFrame.height - gap.outer {
                         let targetH = min(minH, remainingH)
                         targetFrame = CGRect(
-                            x: idealFrame.origin.x,
-                            y: currentSideY,
-                            width: idealFrame.width,
+                            x: isLeft ? (actualLeftX ?? idealFrame.origin.x) : (actualRightX ?? idealFrame.origin.x),
+                            y: currentY,
+                            width: isLeft ? (actualLeftW ?? idealFrame.width) : (actualRightW ?? idealFrame.width),
                             height: targetH
                         )
-                        role = "SIDE[\(i)]"
-                        
-                        // 次の Y 座標を進める
-                        currentSideY += targetH + gap.inner
+                        role = isLeft ? "SIDE_L[\(i)]" : "SIDE_R[\(i)]"
+                        if isLeft {
+                            isLeftWindow = true
+                        } else {
+                            isRightWindow = true
+                        }
                     } else {
-                        // 収まりきらない場合は画面外（スクリーンの直下）に格納
+                        // 収まりきらない場合は画面外（十分に離れた左側）に格納
                         targetFrame = CGRect(
-                            x: screenAXFrame.minX + 100,
-                            y: screenAXFrame.minY + screenAXFrame.height + 500,
+                            x: -4000,
+                            y: screenAXFrame.minY + CGFloat(i) * 10,
                             width: 200,
                             height: 200
                         )
@@ -352,12 +366,37 @@ final class FocusModeController {
                 let success = AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
                 windowManager.setResizeFailed(id: window.id, failed: !success)
 
-                // 一旦、計算されたフレームを仮記録
-                appliedFrames.append((id: window.id, frame: targetFrame))
+                // 実際の配置後のフレームを取得して追跡
+                let actualFrame = AccessibilityHelper.getFrame(of: axWindow) ?? targetFrame
+
+                // 配置後のフレームを記録 (実際の配置フレームを使うことで、stale なキャッシュを防ぐ)
+                appliedFrames.append((id: window.id, frame: actualFrame))
 
                 // 今回指定した理想サイズを記録
                 let idealSz = (i == 0) ? idealFrames[0].size : idealFrames[min(i, idealFrames.count - 1)].size
                 appliedIdealSizes.append((id: window.id, size: idealSz))
+
+                if i == 0 {
+                    // MAIN の実際の配置結果から、左右サイドバーの X 座標と幅を決定
+                    // 左サイドバー
+                    let leftX = screenAXFrame.minX + gap.outer
+                    let leftMaxX = actualFrame.minX - gap.inner
+                    actualLeftX = leftX
+                    actualLeftW = max(100, leftMaxX - leftX)
+
+                    // 右サイドバー
+                    let rightX = actualFrame.maxX + gap.inner
+                    let screenMaxX = screenAXFrame.minX + screenAXFrame.width - gap.outer
+                    actualRightX = rightX
+                    actualRightW = max(100, screenMaxX - rightX)
+                }
+
+                // 実際の高さに基づいて Y 座標を更新する
+                if isLeftWindow {
+                    currentLeftY += actualFrame.height + gap.inner
+                } else if isRightWindow {
+                    currentRightY += actualFrame.height + gap.inner
+                }
 
                 // フォーカスウィンドウの AX を記録（まだ focus() しない）
                 if window.id == focusedWindowID {
