@@ -1,0 +1,879 @@
+{
+  "builtTestProducts" : [
+
+  ],
+  "copyCommands" : {
+
+  },
+  "explicitTargetDependencyImportCheckingMode" : {
+    "none" : {
+
+    }
+  },
+  "generatedSourceTargetSet" : [
+
+  ],
+  "pluginDescriptions" : [
+
+  ],
+  "swiftCommands" : {
+    "C.HotKey-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/sources",
+      "importPath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/HotKey.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/HotKeysController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/Key.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/KeyCombo+System.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/KeyCombo.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/NSEventModifierFlags+HotKey.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/sources"
+        }
+      ],
+      "isLibrary" : true,
+      "moduleName" : "HotKey",
+      "moduleOutputPath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/Modules/HotKey.swiftmodule",
+      "objects" : [
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/HotKey.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/HotKeysController.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/Key.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/KeyCombo+System.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/KeyCombo.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/NSEventModifierFlags+HotKey.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx10.13",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j10",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-parse-as-library",
+        "-emit-objc-header",
+        "-emit-objc-header-path",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/include/HotKey-Swift.h",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-suppress-warnings"
+      ],
+      "outputFileMapPath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/HotKey.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/HotKeysController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/Key.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/KeyCombo+System.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/KeyCombo.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/NSEventModifierFlags+HotKey.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/Modules/HotKey.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/HotKey.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/HotKeysController.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/Key.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/KeyCombo+System.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/KeyCombo.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/NSEventModifierFlags+HotKey.swift"
+      ],
+      "tempsPath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build",
+      "wholeModuleOptimization" : false
+    },
+    "C.TileFocus-arm64-apple-macosx-debug.module" : {
+      "executable" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "fileList" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/sources",
+      "importPath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/Modules",
+      "inputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Accessibility/AccessibilityHelper.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Accessibility/PermissionChecker.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Accessibility/WindowObserver.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/App/AppDelegate.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/App/MenuBarView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Core/ManagedWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Core/WindowManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Core/WindowState.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/HotKey/HotKeyManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/FocusLayout.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/LayoutEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/ScreenManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/TilingLayouts.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Mode/FocusModeController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Mode/TilingModeController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Settings/AppSettings.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Settings/SettingsView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Stage/StageManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Stage/StageSidebarView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/TileFocusApp.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/Modules/HotKey.swiftmodule"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/sources"
+        }
+      ],
+      "isLibrary" : false,
+      "moduleName" : "TileFocus",
+      "moduleOutputPath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/Modules/TileFocus.swiftmodule",
+      "objects" : [
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/AccessibilityHelper.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/PermissionChecker.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/WindowObserver.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/AppDelegate.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/MenuBarView.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/ManagedWindow.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/WindowManager.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/WindowState.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/HotKeyManager.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/FocusLayout.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/LayoutEngine.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/ScreenManager.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/TilingLayouts.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/FocusModeController.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/TilingModeController.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/AppSettings.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/SettingsView.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/StageManager.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/StageSidebarView.swift.o",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/TileFocusApp.swift.o"
+      ],
+      "otherArguments" : [
+        "-target",
+        "arm64-apple-macosx13.0",
+        "-incremental",
+        "-enable-batch-mode",
+        "-serialize-diagnostics",
+        "-index-store-path",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/index/store",
+        "-Onone",
+        "-enable-testing",
+        "-j10",
+        "-DSWIFT_PACKAGE",
+        "-DDEBUG",
+        "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+        "-module-cache-path",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/ModuleCache",
+        "-parseable-output",
+        "-Xfrontend",
+        "-entry-point-function-name",
+        "-Xfrontend",
+        "TileFocus_main",
+        "-swift-version",
+        "5",
+        "-plugin-path",
+        "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+        "-sdk",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-F",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-I",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-L",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+        "-g",
+        "-Xcc",
+        "-isysroot",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+        "-Xcc",
+        "-F",
+        "-Xcc",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+        "-Xcc",
+        "-fPIC",
+        "-Xcc",
+        "-g",
+        "-package-name",
+        "tilefocus"
+      ],
+      "outputFileMapPath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/output-file-map.json",
+      "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/AccessibilityHelper.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/PermissionChecker.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/WindowObserver.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/AppDelegate.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/MenuBarView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/ManagedWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/WindowManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/WindowState.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/HotKeyManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/FocusLayout.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/LayoutEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/ScreenManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/TilingLayouts.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/FocusModeController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/TilingModeController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/AppSettings.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/SettingsView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/StageManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/StageSidebarView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/TileFocusApp.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/Modules/TileFocus.swiftmodule"
+        }
+      ],
+      "prepareForIndexing" : false,
+      "sources" : [
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Accessibility/AccessibilityHelper.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Accessibility/PermissionChecker.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Accessibility/WindowObserver.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/App/AppDelegate.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/App/MenuBarView.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Core/ManagedWindow.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Core/WindowManager.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Core/WindowState.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/HotKey/HotKeyManager.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/FocusLayout.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/LayoutEngine.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/ScreenManager.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/TilingLayouts.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Mode/FocusModeController.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Mode/TilingModeController.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Settings/AppSettings.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Settings/SettingsView.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Stage/StageManager.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Stage/StageSidebarView.swift",
+        "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/TileFocusApp.swift"
+      ],
+      "tempsPath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build",
+      "wholeModuleOptimization" : false
+    }
+  },
+  "swiftFrontendCommands" : {
+
+  },
+  "swiftTargetScanArgs" : {
+    "HotKey" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "HotKey",
+      "-c",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/HotKey.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/HotKeysController.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/Key.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/KeyCombo+System.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/KeyCombo.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/NSEventModifierFlags+HotKey.swift",
+      "-I",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx10.13",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j10",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-parse-as-library",
+      "-emit-objc-header",
+      "-emit-objc-header-path",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/include/HotKey-Swift.h",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-suppress-warnings",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ],
+    "TileFocus" : [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc",
+      "-module-name",
+      "TileFocus",
+      "-package-name",
+      "tilefocus",
+      "-c",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Accessibility/AccessibilityHelper.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Accessibility/PermissionChecker.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Accessibility/WindowObserver.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/App/AppDelegate.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/App/MenuBarView.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Core/ManagedWindow.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Core/WindowManager.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Core/WindowState.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/HotKey/HotKeyManager.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/FocusLayout.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/LayoutEngine.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/ScreenManager.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/TilingLayouts.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Mode/FocusModeController.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Mode/TilingModeController.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Settings/AppSettings.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Settings/SettingsView.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Stage/StageManager.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Stage/StageSidebarView.swift",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/TileFocusApp.swift",
+      "-I",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/Modules",
+      "-target",
+      "arm64-apple-macosx13.0",
+      "-incremental",
+      "-enable-batch-mode",
+      "-serialize-diagnostics",
+      "-index-store-path",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/index/store",
+      "-Onone",
+      "-enable-testing",
+      "-j10",
+      "-DSWIFT_PACKAGE",
+      "-DDEBUG",
+      "-DSWIFT_MODULE_RESOURCE_BUNDLE_UNAVAILABLE",
+      "-module-cache-path",
+      "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/ModuleCache",
+      "-parseable-output",
+      "-Xfrontend",
+      "-entry-point-function-name",
+      "-Xfrontend",
+      "TileFocus_main",
+      "-swift-version",
+      "5",
+      "-plugin-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/host/plugins/testing",
+      "-sdk",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-F",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-I",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-L",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/usr/lib",
+      "-g",
+      "-Xcc",
+      "-isysroot",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.5.sdk",
+      "-Xcc",
+      "-F",
+      "-Xcc",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks",
+      "-Xcc",
+      "-fPIC",
+      "-Xcc",
+      "-g",
+      "-package-name",
+      "tilefocus",
+      "-driver-use-frontend-path",
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+    ]
+  },
+  "targetDependencyMap" : {
+    "HotKey" : [
+
+    ],
+    "TileFocus" : [
+      "HotKey"
+    ]
+  },
+  "testDiscoveryCommands" : {
+
+  },
+  "testEntryPointCommands" : {
+
+  },
+  "traitConfiguration" : {
+    "default" : {
+
+    }
+  },
+  "writeCommands" : {
+    "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/HotKey.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/HotKeysController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/Key.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/KeyCombo+System.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/KeyCombo.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/checkouts/HotKey/Sources/HotKey/NSEventModifierFlags+HotKey.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/sources"
+    },
+    "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus-entitlement.plist" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<entitlement-plist>"
+        },
+        {
+          "kind" : "virtual",
+          "name" : "<com.apple.security.get-task-allow>"
+        }
+      ],
+      "outputFilePath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus-entitlement.plist"
+    },
+    "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/sources" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Accessibility/AccessibilityHelper.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Accessibility/PermissionChecker.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Accessibility/WindowObserver.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/App/AppDelegate.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/App/MenuBarView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Core/ManagedWindow.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Core/WindowManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Core/WindowState.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/HotKey/HotKeyManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/FocusLayout.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/LayoutEngine.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/ScreenManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Layout/TilingLayouts.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Mode/FocusModeController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Mode/TilingModeController.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Settings/AppSettings.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Settings/SettingsView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Stage/StageManager.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/Stage/StageSidebarView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/Sources/TileFocus/TileFocusApp.swift"
+        }
+      ],
+      "outputFilePath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/sources"
+    },
+    "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.product/Objects.LinkFileList" : {
+      "alwaysOutOfDate" : false,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/HotKey.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/HotKeysController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/Key.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/KeyCombo+System.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/KeyCombo.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/HotKey.build/NSEventModifierFlags+HotKey.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/AccessibilityHelper.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/AppDelegate.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/AppSettings.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/FocusLayout.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/FocusModeController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/HotKeyManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/LayoutEngine.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/ManagedWindow.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/MenuBarView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/PermissionChecker.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/ScreenManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/SettingsView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/StageManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/StageSidebarView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/TileFocusApp.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/TilingLayouts.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/TilingModeController.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/WindowManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/WindowObserver.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.build/WindowState.swift.o"
+        }
+      ],
+      "outputFilePath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/TileFocus.product/Objects.LinkFileList"
+    },
+    "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt" : {
+      "alwaysOutOfDate" : true,
+      "inputs" : [
+        {
+          "kind" : "virtual",
+          "name" : "<swift-get-version>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swiftc"
+        }
+      ],
+      "outputFilePath" : "/Users/fscoward/ghq/github.com/FScoward/TileFocus/.build/arm64-apple-macosx/debug/swift-version--58304C5D6DBC2206.txt"
+    }
+  }
+}
