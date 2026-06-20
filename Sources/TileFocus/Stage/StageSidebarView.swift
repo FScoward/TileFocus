@@ -3,59 +3,58 @@ import AppKit
 
 /// 画面左端に表示するフローティングサイドバー（格納ウィンドウ一覧）
 ///
-/// NSPanel を使って他のアプリウィンドウの上に常時表示する
+/// 各モニター（NSScreen）の左端に NSPanel を使って常時表示する
 final class StageSidebarController: NSObject {
 
-    private var panel: NSPanel?
-    private var hostingView: Any?  // NSHostingView<some View> の型消去
+    private var panels: [NSScreen: NSPanel] = [:]
 
-    /// サイドバーを表示する
+    /// 全モニターにサイドバーを表示する
     @MainActor
     func show(windowManager: WindowManager) {
-        if panel != nil { return }
+        hide() // 既存のサイドバーを一度クリーンアップ
 
-        guard let screen = NSScreen.main else { return }
-        let screenFrame = screen.visibleFrame
+        for screen in NSScreen.screens {
+            let screenFrame = screen.visibleFrame
 
-        let sidebarWidth: CGFloat = 180
-        let sidebarHeight = screenFrame.height * 0.6
-        let sidebarY = screenFrame.minY + (screenFrame.height - sidebarHeight) / 2
+            let sidebarWidth: CGFloat = 180
+            let sidebarHeight = screenFrame.height * 0.6
+            let sidebarY = screenFrame.minY + (screenFrame.height - sidebarHeight) / 2
 
-        let panelFrame = CGRect(
-            x: screenFrame.minX,
-            y: sidebarY,
-            width: sidebarWidth,
-            height: sidebarHeight
-        )
+            let panelFrame = CGRect(
+                x: screenFrame.minX,
+                y: sidebarY,
+                width: sidebarWidth,
+                height: sidebarHeight
+            )
 
-        let panel = NSPanel(
-            contentRect: panelFrame,
-            styleMask: [.nonactivatingPanel, .fullSizeContentView, .borderless],
-            backing: .buffered,
-            defer: false
-        )
-        panel.level = .floating
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+            let panel = NSPanel(
+                contentRect: panelFrame,
+                styleMask: [.nonactivatingPanel, .fullSizeContentView, .borderless],
+                backing: .buffered,
+                defer: false
+            )
+            panel.level = .floating
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.hasShadow = true
+            panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
 
-        let sidebarView = StageSidebarView()
-            .environmentObject(windowManager)
-        let hosting = NSHostingView(rootView: sidebarView)
-        panel.contentView = hosting
+            let sidebarView = StageSidebarView(screen: screen)
+                .environmentObject(windowManager)
+            let hosting = NSHostingView(rootView: sidebarView)
+            panel.contentView = hosting
 
-        self.panel = panel
-        self.hostingView = hosting
-
-        panel.orderFrontRegardless()
+            panels[screen] = panel
+            panel.orderFrontRegardless()
+        }
     }
 
-    /// サイドバーを非表示にする
+    /// すべてのサイドバーを非表示にする
     func hide() {
-        panel?.orderOut(nil)
-        panel = nil
-        hostingView = nil
+        for panel in panels.values {
+            panel.orderOut(nil)
+        }
+        panels.removeAll()
     }
 }
 
@@ -64,7 +63,19 @@ final class StageSidebarController: NSObject {
 /// サイドバーのコンテンツ（SwiftUI）
 struct StageSidebarView: View {
     @EnvironmentObject private var windowManager: WindowManager
+    let screen: NSScreen
     @State private var hoveredWindowID: String?
+
+    /// このスクリーンに所属する格納ウィンドウ
+    private var stagedWindowsForScreen: [ManagedWindow] {
+        let screenManager = ScreenManager()
+        return windowManager.stagedWindows.filter { window in
+            // 格納前のフレーム（なければ現在のフレーム）を用いて所属スクリーンを判定
+            let frame = window.frameBeforeStaging ?? window.frame
+            let winScreen = screenManager.screen(containingAXFrame: frame)
+            return winScreen == screen
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -85,7 +96,7 @@ struct StageSidebarView: View {
 
             ScrollView {
                 LazyVStack(spacing: 4) {
-                    ForEach(windowManager.stagedWindows) { window in
+                    ForEach(stagedWindowsForScreen) { window in
                         stagedWindowRow(window)
                     }
                 }
@@ -93,7 +104,7 @@ struct StageSidebarView: View {
                 .padding(.horizontal, 8)
             }
 
-            if windowManager.stagedWindows.isEmpty {
+            if stagedWindowsForScreen.isEmpty {
                 Spacer()
                 Text("格納なし")
                     .font(.caption)
