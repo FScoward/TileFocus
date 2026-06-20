@@ -231,34 +231,21 @@ final class FocusModeController {
         // 配置後のフレームを記録（ManagedWindow.frame 更新用）
         var appliedFrames: [(id: String, frame: CGRect)] = []
 
+        let gap = layout.gap
+        let minSideWindowHeight = layout.minSideWindowHeight
+
         for (si, group) in screenGroups.enumerated() {
             guard !group.isEmpty else { continue }
             let screen = screens[si]
             let screenAXFrame = screenManager.visibleFrameInAX(for: screen)
             Log.info(Self.tag, "  Screen[\(si)] \(group.count)枚 AXFrame=\(screenAXFrame)")
 
-            let frames = layout.calculateFrames(windowCount: group.count, screenFrame: screenAXFrame)
+            let idealFrames = layout.calculateFrames(windowCount: group.count, screenFrame: screenAXFrame)
+
+            // サイドバーの配置 Y 座標の追跡
+            var currentSideY = screenAXFrame.minY + gap.outer
 
             for (i, window) in group.enumerated() {
-                let targetFrame: CGRect
-                let role: String
-                if i < frames.count {
-                    targetFrame = frames[i]
-                    role = i == 0 ? "MAIN" : "SIDE[\(i)]"
-                } else {
-                    // 表示制限を超えるウィンドウは画面外（スクリーンの直下）に格納
-                    // これにより最小化せずに非表示にでき、managedWindows に残り続けます
-                    targetFrame = CGRect(
-                        x: screenAXFrame.minX + 100,
-                        y: screenAXFrame.minY + screenAXFrame.height + 500,
-                        width: 200,
-                        height: 200
-                    )
-                    role = "OFFSCREEN[\(i)]"
-                }
-
-                Log.info(Self.tag, "    \(role) \"\(window.appName) - \(window.title)\" → \(targetFrame)")
-
                 guard let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) else {
                     Log.error(Self.tag, "    ⚠️ AXウィンドウが見つかりません pid=\(window.pid) title=\(window.title)")
                     continue
@@ -270,9 +257,53 @@ final class FocusModeController {
                     AccessibilityHelper.restore(window: axWindow)
                 }
 
+                let targetFrame: CGRect
+                let role: String
+
+                if i == 0 {
+                    // MAIN ウィンドウは常に理想通りのサイズで配置
+                    targetFrame = idealFrames[0]
+                    role = "MAIN"
+                } else {
+                    // SIDE ウィンドウ
+                    let idealFrame = idealFrames[min(i, idealFrames.count - 1)]
+                    
+                    // 前回の実際の高さが理想の高さより大きい場合、それをこのウィンドウの最小高さ制限とみなす
+                    // （ただし画面外退避されていた時の 200px は除外する）
+                    let lastH = window.frame.height
+                    let minH = (lastH > 200 && lastH != idealFrame.height) ? lastH : idealFrame.height
+                    
+                    // 残り高さの計算
+                    let remainingH = (screenAXFrame.minY + screenAXFrame.height - gap.outer) - currentSideY
+                    
+                    if remainingH >= minSideWindowHeight && currentSideY + minSideWindowHeight <= screenAXFrame.minY + screenAXFrame.height - gap.outer {
+                        let targetH = min(minH, remainingH)
+                        targetFrame = CGRect(
+                            x: idealFrame.origin.x,
+                            y: currentSideY,
+                            width: idealFrame.width,
+                            height: targetH
+                        )
+                        role = "SIDE[\(i)]"
+                        
+                        // 次の Y 座標を進める
+                        currentSideY += targetH + gap.inner
+                    } else {
+                        // 収まりきらない場合は画面外（スクリーンの直下）に格納
+                        targetFrame = CGRect(
+                            x: screenAXFrame.minX + 100,
+                            y: screenAXFrame.minY + screenAXFrame.height + 500,
+                            width: 200,
+                            height: 200
+                        )
+                        role = "OFFSCREEN[\(i)]"
+                    }
+                }
+
+                Log.info(Self.tag, "    \(role) \"\(window.appName) - \(window.title)\" → \(targetFrame)")
                 AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
 
-                // 一旦、計算された理想フレームを仮記録（非同期移動中のため直後の getFrame は古い値を返す）
+                // 一旦、計算されたフレームを仮記録
                 appliedFrames.append((id: window.id, frame: targetFrame))
 
                 // フォーカスウィンドウの AX を記録（まだ focus() しない）
