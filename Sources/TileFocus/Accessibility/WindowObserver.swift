@@ -217,6 +217,9 @@ final class WindowObserver {
     }
 
     private func handleWindowCreated(element: AXUIElement, observer: AXObserver) {
+        // タイリング対象のウィンドウか厳密にチェック（ポップアップやメニュー等を除外）
+        guard AccessibilityHelper.isTileable(element) else { return }
+
         guard let frame = AccessibilityHelper.getFrame(of: element) else { return }
 
         var pid: pid_t = 0
@@ -242,9 +245,6 @@ final class WindowObserver {
         if windowID != 0 {
             windowIDCache[AXElementWrapper(element: element)] = windowID
         }
-
-        // 最小サイズフィルタ（ツールウィンドウ・パネル等を除外）
-        guard frame.width >= 100 && frame.height >= 100 else { return }
 
         let window = ManagedWindow(
             pid: pid,
