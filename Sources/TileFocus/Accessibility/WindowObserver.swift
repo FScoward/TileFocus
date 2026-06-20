@@ -261,9 +261,39 @@ final class WindowObserver {
     private func handleWindowClosed(element: AXUIElement) {
         var pid: pid_t = 0
         AXUIElementGetPid(element, &pid)
-        let wrapper = AXElementWrapper(element: element)
-        let windowID = windowIDCache[wrapper] ?? 0
-        windowIDCache.removeValue(forKey: wrapper)
+        
+        // 1. windowIDCache の中から、無効化された (属性取得がエラーになる) かつ pid が一致する wrapper を探す
+        // (Destroyed 通知の element 自体は無効なため CFEqual 等のキー比較が失敗する対策)
+        var closedWrapper: AXElementWrapper? = nil
+        var closedWindowID: CGWindowID = 0
+        
+        for (wrapper, wID) in windowIDCache {
+            var wrapperPid: pid_t = 0
+            AXUIElementGetPid(wrapper.element, &wrapperPid)
+            guard wrapperPid == pid else { continue }
+            
+            var value: CFTypeRef?
+            let res = AXUIElementCopyAttributeValue(wrapper.element, kAXRoleAttribute as CFString, &value)
+            if res != .success {
+                // 属性コピーが失敗 ➔ このウィンドウが閉じられたと特定
+                closedWrapper = wrapper
+                closedWindowID = wID
+                break
+            }
+        }
+        
+        let windowID: CGWindowID
+        if let wrapper = closedWrapper {
+            windowID = closedWindowID
+            windowIDCache.removeValue(forKey: wrapper)
+            Log.info("WindowObserver", "無効化されたAX要素を検出しウィンドウクローズを特定しました: id=\(pid)-\(windowID)")
+        } else {
+            // フォールバック
+            let wrapper = AXElementWrapper(element: element)
+            windowID = windowIDCache[wrapper] ?? 0
+            windowIDCache.removeValue(forKey: wrapper)
+        }
+        
         let id = "\(pid)-\(windowID)"
         delegate?.windowObserver(self, didDetectWindowClosed: id)
     }
