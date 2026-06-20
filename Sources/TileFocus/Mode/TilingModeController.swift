@@ -102,6 +102,8 @@ final class TilingModeController {
 
         windowManager.setTilingInProgress(true)
 
+        var appliedFrames: [(id: String, frame: CGRect)] = []
+
         for (idx, windows) in windowGroups.enumerated() {
             guard !windows.isEmpty else { continue }
             let screen = screens[idx]
@@ -122,8 +124,13 @@ final class TilingModeController {
                     continue
                 }
                 AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
+                // 配置後、実際のフレームを AX から再取得して記録（サイズ制限等を考慮するため）
+                let realFrame = AccessibilityHelper.getFrame(of: axWindow) ?? targetFrame
+                appliedFrames.append((id: window.id, frame: realFrame))
             }
         }
+
+        windowManager.updateFrames(appliedFrames)
 
         // レイアウト適用後の残留通知を吧めるため少し遅らせて false
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in

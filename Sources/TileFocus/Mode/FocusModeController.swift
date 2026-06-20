@@ -18,6 +18,9 @@ final class FocusModeController {
     private var focusedWindowID: String?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var updateWorkItem: DispatchWorkItem?
+    /// applyLayout() 実行中フラグ
+    /// この間は didActivateApplicationNotification による focusedWindowID 更新を抑制する
+    private var isApplyingLayout: Bool = false
 
     // MARK: - Init
 
@@ -41,6 +44,11 @@ final class FocusModeController {
             let appName = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.localizedName ?? "?"
             Log.info(Self.tag, "didActivateApplication: \(appName)")
             Task { @MainActor in
+                // applyLayout() 実行中は通知による上書きを抑制
+                guard !self.isApplyingLayout else {
+                    Log.debug(Self.tag, "didActivateApplication: applyLayout 中のため スキップ")
+                    return
+                }
                 self.updateFocusedWindow()
                 self.scheduleLayoutUpdate()
             }
@@ -96,34 +104,78 @@ final class FocusModeController {
         }) {
             if match.id != focusedWindowID {
                 Log.info(Self.tag, "  フォーカス変更: \"\(match.appName) - \(match.title)\" (id=\(match.id))")
-                focusedWindowID = match.id
+                setFocusedWindowID(match.id)
             } else {
                 Log.debug(Self.tag, "  フォーカス変更なし (already \(match.id))")
             }
         } else if let first = managedWindows.first(where: { $0.pid == pid }) {
             if first.id != focusedWindowID {
                 Log.warn(Self.tag, "  タイトル不一致 → PID マッチで \"\(first.appName) - \(first.title)\"")
-                focusedWindowID = first.id
+                setFocusedWindowID(first.id)
             }
         } else {
             Log.warn(Self.tag, "  managedWindowsに \(appName)(pid=\(pid)) が存在しない → refreshWindowList を実行")
             windowManager.refreshWindowList()
             // リフレッシュ後に再度検索
             if let match = windowManager.managedWindows.first(where: { $0.pid == pid }) {
-                focusedWindowID = match.id
+                setFocusedWindowID(match.id)
                 Log.info(Self.tag, "  リフレッシュ後マッチ: \"\(match.appName)\"")
             }
         }
     }
 
     func switchMainWindow(to windowID: String) {
+        Log.info(Self.tag, "switchMainWindow() 引数 windowID=\(windowID)")
+        Log.info(Self.tag, "  現在の focusedWindowID=\(focusedWindowID ?? "nil")")
+        Log.info(Self.tag, "  isApplyingLayout=\(isApplyingLayout)")
+
+        // managedWindows の状態も記録
+        if let windowManager {
+            let windows = windowManager.managedWindows
+            Log.info(Self.tag, "  managedWindows(\(windows.count)件):")
+            for (i, w) in windows.enumerated() {
+                let isTarget = w.id == windowID ? " ← ターゲット" : ""
+                let isCurrent = w.id == focusedWindowID ? " ← 現在フォーカス" : ""
+                Log.info(Self.tag, "    [\(i)] \"\(w.appName) - \(w.title)\" id=\(w.id)\(isTarget)\(isCurrent)")
+            }
+        }
+
         guard focusedWindowID != windowID else {
             Log.debug(Self.tag, "switchMainWindow: 変更なし (already \(windowID))")
             return
         }
-        Log.info(Self.tag, "switchMainWindow: \(focusedWindowID ?? "nil") → \(windowID)")
-        focusedWindowID = windowID
+        Log.info(Self.tag, "  切り替え: \(focusedWindowID ?? "nil") → \(windowID)")
+        setFocusedWindowID(windowID)
         applyLayout()
+    }
+
+    /// WindowObserver からフォーカス変更の通知を受け取る（同じアプリ内のウィンドウ切り替え等に対応）
+    func handleFocusChanged(pid: pid_t, title: String) {
+        guard !isApplyingLayout else {
+            Log.debug(Self.tag, "handleFocusChanged: applyLayout 中のためスキップ")
+            return
+        }
+
+        guard let windowManager else { return }
+        let managed = windowManager.managedWindows
+
+        if let match = managed.first(where: {
+            $0.pid == pid && ($0.title == title || title.isEmpty)
+        }) ?? managed.first(where: { $0.pid == pid }) {
+            if match.id != focusedWindowID {
+                Log.info(Self.tag, "handleFocusChanged: フォーカス自動変更 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
+                setFocusedWindowID(match.id)
+                scheduleLayoutUpdate()
+            }
+        }
+    }
+
+    // MARK: - Private Helpers
+
+    /// focusedWindowID を更新し WindowManager の @Published 値にも反映させる
+    private func setFocusedWindowID(_ id: String?) {
+        focusedWindowID = id
+        windowManager?.updateFocusedWindowID(id)
     }
 
     // MARK: - Layout Application
@@ -138,6 +190,7 @@ final class FocusModeController {
     }
 
     func applyLayout() {
+        isApplyingLayout = true
         guard let windowManager else { return }
         let windows = windowManager.managedWindows.filter { $0.state != .staged }
 
@@ -150,13 +203,16 @@ final class FocusModeController {
 
         // フォーカスウィンドウを先頭に並び替え
         var ordered = windows
+        var focusedWindow: ManagedWindow? = nil
         if let focusedID = focusedWindowID,
            let idx = ordered.firstIndex(where: { $0.id == focusedID }) {
             let focused = ordered.remove(at: idx)
             ordered.insert(focused, at: 0)
-            Log.debug(Self.tag, "  先頭: \"\(focused.appName) - \(focused.title)\"")
+            focusedWindow = focused
+            Log.debug(Self.tag, "  先頭(フォーカス): \"\(focused.appName) - \(focused.title)\"")
         } else {
             Log.warn(Self.tag, "  focusedID が managedWindows に存在しない → 先頭をそのまま使用")
+            focusedWindow = ordered.first
         }
 
         // スクリーン別グループ化
@@ -170,6 +226,11 @@ final class FocusModeController {
         // タイリング中フラグ（全スクリーン分の処理全体を囲む）
         windowManager.setTilingInProgress(true)
 
+        // フォーカスするウィンドウの AXUIElement（配置後に1回だけ focus() する）
+        var axWindowToFocus: AXUIElement? = nil
+        // 配置後のフレームを記録（ManagedWindow.frame 更新用）
+        var appliedFrames: [(id: String, frame: CGRect)] = []
+
         for (si, group) in screenGroups.enumerated() {
             guard !group.isEmpty else { continue }
             let screen = screens[si]
@@ -179,30 +240,65 @@ final class FocusModeController {
             let frames = layout.calculateFrames(windowCount: group.count, screenFrame: screenAXFrame)
 
             for (i, window) in group.enumerated() {
-                guard i < frames.count else {
-                    Log.debug(Self.tag, "    \"\(window.appName)\" はサイドバー超過のためスキップ")
-                    break
+                let targetFrame: CGRect
+                let role: String
+                if i < frames.count {
+                    targetFrame = frames[i]
+                    role = i == 0 ? "MAIN" : "SIDE[\(i)]"
+                } else {
+                    // 表示制限を超えるウィンドウは画面外（スクリーンの直下）に格納
+                    // これにより最小化せずに非表示にでき、managedWindows に残り続けます
+                    targetFrame = CGRect(
+                        x: screenAXFrame.minX + 100,
+                        y: screenAXFrame.minY + screenAXFrame.height + 500,
+                        width: 200,
+                        height: 200
+                    )
+                    role = "OFFSCREEN[\(i)]"
                 }
-                let targetFrame = frames[i]
-                let role = i == 0 ? "MAIN" : "SIDE[\(i)]"
+
                 Log.info(Self.tag, "    \(role) \"\(window.appName) - \(window.title)\" → \(targetFrame)")
 
                 guard let axWindow = AccessibilityHelper.findWindow(for: window.pid, title: window.title) else {
                     Log.error(Self.tag, "    ⚠️ AXウィンドウが見つかりません pid=\(window.pid) title=\(window.title)")
                     continue
                 }
+
+                // 必要なら最小化を解除（ユーザーが手動で最小化していた場合などに備えて）
+                if AccessibilityHelper.isMinimized(axWindow) {
+                    Log.info(Self.tag, "    → 最小化を解除: \"\(window.appName)\"")
+                    AccessibilityHelper.restore(window: axWindow)
+                }
+
                 AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
 
-                if i == 0 {
-                    AccessibilityHelper.focus(window: axWindow)
+                // 配置後、実際のフレームを AX から再取得して記録（サイズ制限等を考慮するため）
+                let realFrame = AccessibilityHelper.getFrame(of: axWindow) ?? targetFrame
+                appliedFrames.append((id: window.id, frame: realFrame))
+
+                // フォーカスウィンドウの AX を記録（まだ focus() しない）
+                if window.id == focusedWindow?.id {
+                    axWindowToFocus = axWindow
+                    Log.debug(Self.tag, "    → focus 予定: \"\(window.appName)\"")
                 }
             }
         }
 
-        // focus() 後の OS によるウィンドウ稍微移動通知を吧めるため少し遅らせて false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        // ManagedWindow.frame を配置後の値で更新（次回 screenIndex が stale フレームを使わないように）
+        windowManager.updateFrames(appliedFrames)
+        Log.debug(Self.tag, "  ManagedWindow.frame 更新: \(appliedFrames.count)件")
+
+        // 全ウィンドウ配置完了後に、フォーカスウィンドウだけ focus() する
+        if let axWindowToFocus {
+            Log.info(Self.tag, "  focus() 実行: \"\(focusedWindow?.appName ?? "?")\"")
+            AccessibilityHelper.focus(window: axWindowToFocus)
+        }
+
+        // focus() 後の OS によるウィンドウ微小移動通知を吸収するため少し遅らせて false に戻す
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             self?.windowManager?.setTilingInProgress(false)
-            Log.debug(Self.tag, "setTilingInProgress(false) 完了")
+            self?.isApplyingLayout = false
+            Log.debug(Self.tag, "setTilingInProgress(false) / isApplyingLayout=false 完了")
         }
 
         Log.info(Self.tag, "applyLayout() 完了")

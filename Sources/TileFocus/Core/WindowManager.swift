@@ -25,6 +25,9 @@ final class WindowManager: ObservableObject {
     /// 現在選択されているレイアウト（nil = 自動選択）
     @Published private(set) var currentLayout: (any Layout)?
 
+    /// Focus Mode で現在フォーカス中のウィンドウ ID（UI 参照用）
+    @Published private(set) var focusedWindowID: String?
+
     // MARK: - Internal Components
 
     private var tilingController: TilingModeController?
@@ -153,25 +156,46 @@ final class WindowManager: ObservableObject {
     /// - Tiling Mode: managedWindows 先頭に移動して再タイリング
     /// - Focus Mode : FocusModeController にフォーカス切り替えを通知
     func promoteCurrentWindowToMaster() {
-        guard currentMode != .off else { return }
-        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
+        let tag = "WindowManager"
+        Log.info(tag, "promoteCurrentWindowToMaster() 開始 currentMode=\(currentMode.displayName)")
+        guard currentMode != .off else {
+            Log.warn(tag, "  モードが OFF のためスキップ")
+            return
+        }
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else {
+            Log.warn(tag, "  frontmostApplication = nil")
+            return
+        }
         let frontPid = frontApp.processIdentifier
+        Log.info(tag, "  frontApp=\(frontApp.localizedName ?? "?") pid=\(frontPid)")
 
         // TileFocus 自身は無視
-        guard frontPid != ProcessInfo.processInfo.processIdentifier else { return }
+        guard frontPid != ProcessInfo.processInfo.processIdentifier else {
+            Log.warn(tag, "  TileFocus 自身のため無視")
+            return
+        }
 
         // フロントアプリのメインウィンドウを特定
         let frontAXWindows = AccessibilityHelper.getWindows(for: frontPid)
+        Log.info(tag, "  AXウィンドウ数=\(frontAXWindows.count)")
         let mainAX = frontAXWindows.first { AccessibilityHelper.isMainWindow($0) } ?? frontAXWindows.first
         let mainTitle = mainAX.flatMap { AccessibilityHelper.getTitle(of: $0) } ?? ""
+        Log.info(tag, "  mainTitle=\"\(mainTitle)\"")
+
+        // managedWindows の状態を記録
+        Log.info(tag, "  managedWindows(\(managedWindows.count)件):")
+        for (i, w) in managedWindows.enumerated() {
+            Log.info(tag, "    [\(i)] pid=\(w.pid) \"\(w.appName) - \(w.title)\" id=\(w.id)")
+        }
 
         // managedWindows 内で対応するウィンドウを探す
         guard let managed = managedWindows.first(where: {
             $0.pid == frontPid && ($0.title == mainTitle || mainTitle.isEmpty)
         }) ?? managedWindows.first(where: { $0.pid == frontPid }) else {
-            print("[WindowManager] フロントウィンドウが管理リストにありません: \(mainTitle)")
+            Log.warn(tag, "  フロントウィンドウが管理リストにありません pid=\(frontPid) title=\"\(mainTitle)\"")
             return
         }
+        Log.info(tag, "  マッチしたウィンドウ: \"\(managed.appName) - \(managed.title)\" id=\(managed.id)")
 
         switch currentMode {
         case .tiling:
@@ -179,16 +203,16 @@ final class WindowManager: ObservableObject {
             if let idx = managedWindows.firstIndex(where: { $0.id == managed.id }), idx != 0 {
                 let promoted = managedWindows.remove(at: idx)
                 managedWindows.insert(promoted, at: 0)
-                print("[WindowManager] Tiling マスター変更: \(promoted.appName) - \(promoted.title)")
+                Log.info(tag, "  Tiling マスター変更: \(promoted.appName) - \(promoted.title)")
                 tilingController?.retile()
                 objectWillChange.send()
             } else {
-                print("[WindowManager] \(managed.appName) はすでにマスターです")
+                Log.info(tag, "  \(managed.appName) はすでにマスターです")
             }
         case .focus:
-            // Focus Mode: FocusModeController に委譹
+            // Focus Mode: FocusModeController に委譲
+            Log.info(tag, "  Focus Mode → switchMainWindow(to: \(managed.id))")
             focusController?.switchMainWindow(to: managed.id)
-            print("[WindowManager] Focus メイン変更: \(managed.appName) - \(managed.title)")
         case .off:
             break
         }
@@ -197,6 +221,17 @@ final class WindowManager: ObservableObject {
     /// 現在のマスターウィンドウの情報を返す
     var masterWindow: ManagedWindow? {
         managedWindows.first { $0.state != .staged }
+    }
+
+    /// Focus Mode でフォーカスウィンドウを切り替える（MenuBar などから呼ばれる）
+    func switchFocusedWindow(to windowID: String) {
+        guard currentMode == .focus else {
+            Log.warn("WindowManager", "switchFocusedWindow: Focus Mode でないためスキップ")
+            return
+        }
+        Log.info("WindowManager", "switchFocusedWindow(to: \(windowID))")
+        focusedWindowID = windowID
+        focusController?.switchMainWindow(to: windowID)
     }
 
     // MARK: - Stage Control
@@ -319,6 +354,21 @@ final class WindowManager: ObservableObject {
         managedWindows = windows
     }
 
+    /// Focus Mode のフォーカスウィンドウ ID を更新する（FocusModeController から呼ばれる）
+    func updateFocusedWindowID(_ id: String?) {
+        focusedWindowID = id
+    }
+
+    /// レイアウト適用後の実際のフレームで ManagedWindow.frame を更新する
+    /// stale なキャッシュを防ぎ、次回の screenIndex 計算を正確にする
+    func updateFrames(_ frames: [(id: String, frame: CGRect)]) {
+        for entry in frames {
+            if let idx = managedWindows.firstIndex(where: { $0.id == entry.id }) {
+                managedWindows[idx].frame = entry.frame
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     /// 現在フォーカスされているウィンドウを取得
@@ -359,6 +409,17 @@ extension WindowManager: WindowObserverDelegate {
             if let index = managedWindows.firstIndex(where: { $0.id == window.id }) {
                 managedWindows[index].frame = window.frame
             }
+        }
+    }
+
+    nonisolated func windowObserver(
+        _ observer: WindowObserver,
+        didDetectFocusChanged pid: pid_t,
+        title: String
+    ) {
+        Task { @MainActor in
+            guard currentMode == .focus else { return }
+            focusController?.handleFocusChanged(pid: pid, title: title)
         }
     }
 }

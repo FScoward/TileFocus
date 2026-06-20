@@ -10,6 +10,8 @@ protocol WindowObserverDelegate: AnyObject {
     func windowObserver(_ observer: WindowObserver, didDetectWindowClosed windowID: String)
     /// ウィンドウが移動・リサイズされた（ユーザー操作によるもの）
     func windowObserver(_ observer: WindowObserver, didDetectWindowMoved window: ManagedWindow)
+    /// フォーカス（アクティブウィンドウ）が変更された
+    func windowObserver(_ observer: WindowObserver, didDetectFocusChanged pid: pid_t, title: String)
 }
 
 // MARK: - WindowObserver
@@ -188,6 +190,9 @@ final class WindowObserver {
 
         case kAXFocusedWindowChangedNotification:
             Log.debug("WindowObserver", "kAXFocusedWindowChanged pid=\(pid) \"\(title)\"")
+            if !isTiling {
+                delegate?.windowObserver(self, didDetectFocusChanged: pid, title: title)
+            }
 
         default:
             break

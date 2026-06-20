@@ -226,6 +226,61 @@ struct MenuBarView: View {
                     .padding(.vertical, 2)
             }
 
+            // Focus Mode 時: ウィンドウ一覧による入れ替え
+            if windowManager.currentMode == .focus {
+                Text("フォーカス切り替え")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 4)
+
+                ForEach(windowManager.managedWindows.filter { $0.state != .staged }) { window in
+                    Button {
+                        Log.info("MenuBarView", "ウィンドウクリック: \(window.appName) - \(window.title) id=\(window.id)")
+                        windowManager.switchFocusedWindow(to: window.id)
+                    } label: {
+                        HStack {
+                            Image(systemName: windowManager.focusedWindowID == window.id
+                                  ? "eye.fill" : "eye")
+                                .foregroundStyle(windowManager.focusedWindowID == window.id
+                                                 ? Color.accentColor : .secondary)
+                                .frame(width: 16)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(window.appName)
+                                    .font(.caption)
+                                    .fontWeight(windowManager.focusedWindowID == window.id ? .semibold : .regular)
+                                if !window.title.isEmpty && window.title != window.appName {
+                                    Text(window.title)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            Spacer()
+                            if windowManager.focusedWindowID == window.id {
+                                Text("フォーカス中")
+                                    .font(.caption2)
+                                    .foregroundStyle(Color.accentColor)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .background(
+                        windowManager.focusedWindowID == window.id
+                            ? Color.accentColor.opacity(0.08)
+                            : Color.clear
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .padding(.horizontal, 4)
+                }
+
+                Divider()
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 2)
+            }
+
             Button {
                 windowManager.stageFocusedWindow()
             } label: {
