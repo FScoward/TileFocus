@@ -40,13 +40,11 @@ final class WindowObserver {
 
     /// 監視を開始する
     func startObserving() {
-        // 既存の実行中アプリを監視（自分自身と .accessory 以外）
         for app in NSWorkspace.shared.runningApplications
             where shouldMonitor(app) {
             registerObserver(for: app)
         }
 
-        // アプリの起動/終了を監視
         let launchToken = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didLaunchApplicationNotification,
             object: nil,
@@ -54,6 +52,7 @@ final class WindowObserver {
         ) { [weak self] notification in
             guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
                     as? NSRunningApplication else { return }
+            Log.info("WindowObserver", "アプリ起動: \(app.localizedName ?? "?") (pid=\(app.processIdentifier))")
             self?.registerObserver(for: app)
         }
 
@@ -64,11 +63,12 @@ final class WindowObserver {
         ) { [weak self] notification in
             guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
                     as? NSRunningApplication else { return }
+            Log.info("WindowObserver", "アプリ終了: \(app.localizedName ?? "?") (pid=\(app.processIdentifier))")
             self?.unregisterObserver(for: app.processIdentifier)
         }
 
         workspaceObservers = [launchToken, terminateToken]
-        print("[WindowObserver] 監視開始: \(axObservers.count) アプリ")
+        Log.info("WindowObserver", "監視開始: \(axObservers.count) アプリ")
     }
 
     /// 監視を停止する
@@ -77,13 +77,12 @@ final class WindowObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(token)
         }
         workspaceObservers = []
-
         for (_, observer) in axObservers {
             let src = AXObserverGetRunLoopSource(observer)
             CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .defaultMode)
         }
         axObservers = [:]
-        print("[WindowObserver] 監視停止")
+        Log.info("WindowObserver", "監視停止")
     }
 
     // MARK: - Private: Filter
@@ -126,10 +125,9 @@ final class WindowObserver {
         let source = AXObserverGetRunLoopSource(axObserver)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
 
-        // 強参照を保持（解放されると通知が停止するため）
+        // 強参照を保持
         axObservers[pid] = axObserver
-
-        print("[WindowObserver] 登録: \(app.localizedName ?? "Unknown") (pid=\(pid))")
+        Log.info("WindowObserver", "登録: \(app.localizedName ?? "Unknown") (pid=\(pid)) windows=\(AccessibilityHelper.getWindows(for: pid).count)")
     }
 
     /// 既存の全ウィンドウにウィンドウレベルの通知を登録する
@@ -156,7 +154,7 @@ final class WindowObserver {
         let source = AXObserverGetRunLoopSource(observer)
         CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .defaultMode)
         axObservers.removeValue(forKey: pid)
-        print("[WindowObserver] 登録解除: pid=\(pid)")
+        Log.info("WindowObserver", "登録解除: pid=\(pid)")
     }
 
     // MARK: - Event Handling
@@ -167,22 +165,29 @@ final class WindowObserver {
         notification: CFString
     ) {
         let notifName = notification as String
+        var pid: pid_t = 0
+        AXUIElementGetPid(element, &pid)
+        let title = AccessibilityHelper.getTitle(of: element) ?? "?"
 
         switch notifName {
         case kAXWindowCreatedNotification:
+            Log.info("WindowObserver", "kAXWindowCreated pid=\(pid) \"\(title)\"")
             handleWindowCreated(element: element, observer: observer)
 
         case kAXUIElementDestroyedNotification:
+            Log.info("WindowObserver", "kAXUIElementDestroyed pid=\(pid) \"\(title)\"")
             handleWindowClosed(element: element)
 
         case kAXWindowMovedNotification, kAXWindowResizedNotification:
-            // タイリング適用中は自分が動かした移動を無視する（フィードバックループ防止）
-            guard !isTiling else { return }
+            if isTiling {
+                Log.debug("WindowObserver", "\(notifName) pid=\(pid) \"\(title)\" → isTiling=true スキップ")
+                return
+            }
+            Log.debug("WindowObserver", "\(notifName) pid=\(pid) \"\(title)\" → handleWindowMoved")
             handleWindowMoved(element: element)
 
         case kAXFocusedWindowChangedNotification:
-            // 将来の実装用（現在は無視）
-            break
+            Log.debug("WindowObserver", "kAXFocusedWindowChanged pid=\(pid) \"\(title)\"")
 
         default:
             break

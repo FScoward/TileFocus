@@ -299,6 +299,27 @@ struct MenuBarView: View {
                 .padding(.horizontal, 4)
             }
 
+            // ログファイルを Finder で開く
+            Button {
+                let logPath = Log.logFilePath
+                NSWorkspace.shared.selectFile(logPath, inFileViewerRootedAtPath: "")
+            } label: {
+                HStack {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .frame(width: 16)
+                    Text("ログを開く")
+                    Spacer()
+                    Text("~/Library/Logs/TileFocus/")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .padding(.horizontal, 4)
+
             Button("TileFocus を終了") {
                 NSApplication.shared.terminate(nil)
             }

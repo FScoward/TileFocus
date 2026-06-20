@@ -5,6 +5,8 @@ import AppKit
 /// ウィンドウの位置・サイズ取得/設定、タイトル取得、ウィンドウ列挙などを提供
 enum AccessibilityHelper {
 
+    private static let tag = "AccessibilityHelper"
+
     // MARK: - Window Enumeration
 
     /// 指定 PID のアプリが持つ全 AXUIElement（ウィンドウ）を返す
@@ -38,19 +40,31 @@ enum AccessibilityHelper {
         var subroleRef: CFTypeRef?
         AXUIElementCopyAttributeValue(window, kAXSubroleAttribute as CFString, &subroleRef)
         let subrole = subroleRef as? String ?? ""
-        guard subrole == kAXStandardWindowSubrole else { return false }
+        guard subrole == kAXStandardWindowSubrole else {
+            Log.debug(tag, "isTileable=false subrole=\(subrole) title=\(getTitle(of: window) ?? "")")
+            return false
+        }
 
         // リサイズ可能かチェック
         var settable: DarwinBoolean = false
         AXUIElementIsAttributeSettable(window, kAXSizeAttribute as CFString, &settable)
-        guard settable.boolValue else { return false }
+        guard settable.boolValue else {
+            Log.debug(tag, "isTileable=false not-resizable title=\(getTitle(of: window) ?? "")")
+            return false
+        }
 
         // 最小化されていないかチェック
-        if isMinimized(window) { return false }
+        if isMinimized(window) {
+            Log.debug(tag, "isTileable=false minimized title=\(getTitle(of: window) ?? "")")
+            return false
+        }
 
         // 最小サイズチェック
         guard let frame = getFrame(of: window),
-              frame.width >= 100, frame.height >= 100 else { return false }
+              frame.width >= 100, frame.height >= 100 else {
+            Log.debug(tag, "isTileable=false too-small title=\(getTitle(of: window) ?? "")")
+            return false
+        }
 
         return true
     }
@@ -109,11 +123,14 @@ enum AccessibilityHelper {
 
     // MARK: - Move & Resize
 
-    /// ウィンドウを指定位置・サイズに即時移動（同期・安全）
+    /// ウィンドウを指定位置・サイズに即時移動
     ///
-    /// - Note: 位置を先に設定してからサイズを設定する（順序重要）
     /// - Note: asyncAfter は使わない → AXWindowMovedNotification の連鎖を防ぐ
     static func moveAndResize(window: AXUIElement, to position: CGPoint, size: CGSize) {
+        let title = getTitle(of: window) ?? "?"
+        var pid: pid_t = 0
+        AXUIElementGetPid(window, &pid)
+        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" → pos=\(position) size=\(size)")
         setPosition(of: window, to: position)
         setSize(of: window, to: size)
     }
@@ -138,22 +155,18 @@ enum AccessibilityHelper {
     // MARK: - Window ID
 
     /// AXUIElement から CGWindowID を取得
-    /// CGWindowListCopyWindowInfo を PID フィルタで効率的に検索
     static func getWindowID(of window: AXUIElement) -> CGWindowID? {
         var pid: pid_t = 0
         AXUIElementGetPid(window, &pid)
         let title = getTitle(of: window) ?? ""
 
-        // スクリーン上のウィンドウ情報を取得（軽量オプション）
         let options: CGWindowListOption = [.excludeDesktopElements]
         guard let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
             return nil
         }
 
-        // 同じ PID のウィンドウに絞ってタイトルマッチ
         let pidWindows = list.filter { ($0[kCGWindowOwnerPID as String] as? pid_t) == pid }
 
-        // タイトル完全一致
         if !title.isEmpty {
             for info in pidWindows {
                 let wName = info[kCGWindowName as String] as? String ?? ""
@@ -163,7 +176,6 @@ enum AccessibilityHelper {
             }
         }
 
-        // フォールバック: 同 PID の最初のウィンドウ
         if let first = pidWindows.first, let wID = first[kCGWindowNumber as String] as? CGWindowID {
             return wID
         }
@@ -173,33 +185,25 @@ enum AccessibilityHelper {
 
     // MARK: - Minimize / Restore
 
-    /// ウィンドウを最小化
     static func minimize(window: AXUIElement) {
-        AXUIElementSetAttributeValue(
-            window, kAXMinimizedAttribute as CFString, true as CFTypeRef
-        )
+        AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, true as CFTypeRef)
     }
 
-    /// ウィンドウを最小化から復元
     static func restore(window: AXUIElement) {
-        AXUIElementSetAttributeValue(
-            window, kAXMinimizedAttribute as CFString, false as CFTypeRef
-        )
+        AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, false as CFTypeRef)
     }
 
     // MARK: - Focus
 
-    /// ウィンドウにフォーカスを当てる
     static func focus(window: AXUIElement) {
-        AXUIElementSetAttributeValue(
-            window, kAXMainAttribute as CFString, true as CFTypeRef
-        )
+        let title = getTitle(of: window) ?? "?"
+        Log.debug(tag, "focus \"\(title)\"")
+        AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, true as CFTypeRef)
         AXUIElementPerformAction(window, kAXRaiseAction as CFString)
     }
 
     // MARK: - Minimized Check
 
-    /// ウィンドウが最小化されているかチェック
     static func isMinimized(_ window: AXUIElement) -> Bool {
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(
@@ -214,12 +218,18 @@ enum AccessibilityHelper {
     private static func setPosition(of window: AXUIElement, to position: CGPoint) {
         var point = position
         guard let posValue = AXValueCreate(.cgPoint, &point) else { return }
-        AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posValue)
+        let result = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, posValue)
+        if result != .success {
+            Log.warn(tag, "setPosition failed result=\(result.rawValue) pos=\(position)")
+        }
     }
 
     private static func setSize(of window: AXUIElement, to size: CGSize) {
         var sz = size
         guard let sizeValue = AXValueCreate(.cgSize, &sz) else { return }
-        AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+        let result = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+        if result != .success {
+            Log.warn(tag, "setSize failed result=\(result.rawValue) size=\(size)")
+        }
     }
 }
