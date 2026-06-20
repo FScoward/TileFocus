@@ -41,15 +41,15 @@ final class FocusModeController {
             queue: .main
         ) { [weak self] notification in
             guard let self else { return }
-            let appName = (notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.localizedName ?? "?"
-            Log.info(Self.tag, "didActivateApplication: \(appName)")
+            guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            Log.info(Self.tag, "didActivateApplication: \(app.localizedName ?? "?")")
             Task { @MainActor in
                 // applyLayout() 実行中は通知による上書きを抑制
                 guard !self.isApplyingLayout else {
                     Log.debug(Self.tag, "didActivateApplication: applyLayout 中のため スキップ")
                     return
                 }
-                self.updateFocusedWindow()
+                self.updateFocusedWindow(runningApp: app)
                 self.scheduleLayoutUpdate()
             }
         }
@@ -72,9 +72,9 @@ final class FocusModeController {
 
     // MARK: - Focus Control
 
-    private func updateFocusedWindow() {
+    private func updateFocusedWindow(runningApp: NSRunningApplication? = nil) {
         guard let windowManager else { return }
-        guard let frontApp = NSWorkspace.shared.frontmostApplication else {
+        guard let frontApp = runningApp ?? NSWorkspace.shared.frontmostApplication else {
             Log.warn(Self.tag, "updateFocusedWindow: frontmostApplication = nil")
             return
         }

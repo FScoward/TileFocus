@@ -197,7 +197,16 @@ enum AccessibilityHelper {
 
     static func focus(window: AXUIElement) {
         let title = getTitle(of: window) ?? "?"
-        Log.debug(tag, "focus \"\(title)\"")
+        var pid: pid_t = 0
+        AXUIElementGetPid(window, &pid)
+        Log.debug(tag, "focus \"\(title)\" (pid=\(pid))")
+
+        // 1. まずそのプロセス自体をアクティブにする
+        if let app = NSRunningApplication(processIdentifier: pid) {
+            app.activate(options: [.activateIgnoringOtherApps])
+        }
+
+        // 2. ウィンドウをメインにして最前面に上げる
         AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, true as CFTypeRef)
         AXUIElementPerformAction(window, kAXRaiseAction as CFString)
     }
