@@ -244,8 +244,13 @@ final class FocusModeController {
             }
         }
 
-        // スクリーン別グループ化
-        let screens = NSScreen.screens
+        // スクリーン別グループ化（NSScreen.screens の順序の揺らぎを防ぐため物理座標でソート）
+        let screens = NSScreen.screens.sorted { s1, s2 in
+            if s1.frame.origin.x != s2.frame.origin.x {
+                return s1.frame.origin.x < s2.frame.origin.x
+            }
+            return s1.frame.origin.y > s2.frame.origin.y
+        }
         var screenGroups: [[ManagedWindow]] = Array(repeating: [], count: max(screens.count, 1))
         for window in ordered {
             var currentFrame = window.frame

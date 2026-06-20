@@ -86,7 +86,13 @@ final class TilingModeController {
             return
         }
 
-        let screens = NSScreen.screens
+        // NSScreen.screens の順序の揺らぎを防ぐため物理座標でソート
+        let screens = NSScreen.screens.sorted { s1, s2 in
+            if s1.frame.origin.x != s2.frame.origin.x {
+                return s1.frame.origin.x < s2.frame.origin.x
+            }
+            return s1.frame.origin.y > s2.frame.origin.y
+        }
         guard !screens.isEmpty else {
             Log.error(Self.tag, "applyTiling: NSScreen.screens が空")
             return
