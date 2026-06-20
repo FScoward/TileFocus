@@ -30,6 +30,9 @@ struct ManagedWindow: Identifiable, Hashable {
     /// 格納前のフレーム（復帰時に使用）
     var frameBeforeStaging: CGRect?
 
+    /// リサイズに失敗したことがあるか（画面共有やアスペクト比固定ウィンドウなどの考慮用）
+    var isResizeFailed: Bool
+
     // MARK: - Init
 
     init(
@@ -39,7 +42,8 @@ struct ManagedWindow: Identifiable, Hashable {
         appName: String,
         bundleIdentifier: String? = nil,
         frame: CGRect,
-        state: WindowState = .tiled
+        state: WindowState = .tiled,
+        isResizeFailed: Bool = false
     ) {
         self.id = "\(pid)-\(windowID)"
         self.pid = pid
@@ -49,6 +53,7 @@ struct ManagedWindow: Identifiable, Hashable {
         self.bundleIdentifier = bundleIdentifier
         self.frame = frame
         self.state = state
+        self.isResizeFailed = isResizeFailed
     }
 
     // MARK: - Hashable

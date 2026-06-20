@@ -38,6 +38,9 @@ final class WindowObserver {
     /// NSWorkspace の通知 token
     private var workspaceObservers: [NSObjectProtocol] = []
 
+    /// AXUIElement から CGWindowID へのキャッシュ (閉じた時に一意に特定するため)
+    private var windowIDCache: [AXElementWrapper: CGWindowID] = [:]
+
     // MARK: - Public API
 
     /// 監視を開始する
@@ -145,6 +148,10 @@ final class WindowObserver {
             kAXWindowResizedNotification,        // リサイズ
         ]
         for window in windows {
+            // キャッシュに windowID を保存
+            if let wID = AccessibilityHelper.getWindowID(of: window) {
+                windowIDCache[AXElementWrapper(element: window)] = wID
+            }
             for notification in windowNotifications {
                 AXObserverAddNotification(observer, window, notification as CFString, selfPtr)
             }
@@ -156,6 +163,16 @@ final class WindowObserver {
         let source = AXObserverGetRunLoopSource(observer)
         CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .defaultMode)
         axObservers.removeValue(forKey: pid)
+        
+        // キャッシュからこの pid のエントリをすべてクリーンアップ
+        for key in windowIDCache.keys {
+            var cachedPid: pid_t = 0
+            AXUIElementGetPid(key.element, &cachedPid)
+            if cachedPid == pid {
+                windowIDCache.removeValue(forKey: key)
+            }
+        }
+        
         Log.info("WindowObserver", "登録解除: pid=\(pid)")
     }
 
@@ -220,6 +237,11 @@ final class WindowObserver {
         let appName = app?.localizedName ?? "Unknown"
         let title = AccessibilityHelper.getTitle(of: element) ?? ""
         let windowID = AccessibilityHelper.getWindowID(of: element) ?? 0
+        
+        // キャッシュに保存
+        if windowID != 0 {
+            windowIDCache[AXElementWrapper(element: element)] = windowID
+        }
 
         // 最小サイズフィルタ（ツールウィンドウ・パネル等を除外）
         guard frame.width >= 100 && frame.height >= 100 else { return }
@@ -239,7 +261,9 @@ final class WindowObserver {
     private func handleWindowClosed(element: AXUIElement) {
         var pid: pid_t = 0
         AXUIElementGetPid(element, &pid)
-        let windowID = AccessibilityHelper.getWindowID(of: element) ?? 0
+        let wrapper = AXElementWrapper(element: element)
+        let windowID = windowIDCache[wrapper] ?? 0
+        windowIDCache.removeValue(forKey: wrapper)
         let id = "\(pid)-\(windowID)"
         delegate?.windowObserver(self, didDetectWindowClosed: id)
     }
@@ -283,4 +307,17 @@ private func axCallback(
         element: element,
         notification: notification
     )
+}
+
+/// AXUIElement を Dictionary のキーとして安全に扱うためのラッパー
+struct AXElementWrapper: Hashable {
+    let element: AXUIElement
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(CFHash(element))
+    }
+
+    static func == (lhs: AXElementWrapper, rhs: AXElementWrapper) -> Bool {
+        CFEqual(lhs.element, rhs.element)
+    }
 }

@@ -269,9 +269,14 @@ final class FocusModeController {
                     let idealFrame = idealFrames[min(i, idealFrames.count - 1)]
                     
                     // 前回の実際の高さが理想の高さより大きい場合、それをこのウィンドウの最小高さ制限とみなす
-                    // （ただし画面外退避されていた時の 200px は除外する）
+                    // （ただし画面外退避されていた時の 200px は除外する。またリサイズ失敗したウィンドウも除外する）
                     let lastH = window.frame.height
-                    let minH = (lastH > 200 && lastH != idealFrame.height) ? lastH : idealFrame.height
+                    let minH: CGFloat
+                    if window.isResizeFailed {
+                        minH = idealFrame.height
+                    } else {
+                        minH = (lastH > 200 && lastH != idealFrame.height) ? lastH : idealFrame.height
+                    }
                     
                     // 残り高さの計算
                     let remainingH = (screenAXFrame.minY + screenAXFrame.height - gap.outer) - currentSideY
@@ -301,7 +306,8 @@ final class FocusModeController {
                 }
 
                 Log.info(Self.tag, "    \(role) \"\(window.appName) - \(window.title)\" → \(targetFrame)")
-                AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
+                let success = AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
+                windowManager.setResizeFailed(id: window.id, failed: !success)
 
                 // 一旦、計算されたフレームを仮記録
                 appliedFrames.append((id: window.id, frame: targetFrame))

@@ -123,7 +123,8 @@ final class TilingModeController {
                     Log.error(Self.tag, "  ⚠️ AXウィンドウが見つかりません pid=\(window.pid) title=\"\(window.title)\"")
                     continue
                 }
-                AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
+                let success = AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
+                windowManager.setResizeFailed(id: window.id, failed: !success)
                 // 一旦、計算された理想フレームを仮記録（非同期移動中のため直後の getFrame は古い値を返す）
                 appliedFrames.append((id: window.id, frame: targetFrame))
             }

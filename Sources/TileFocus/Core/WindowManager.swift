@@ -359,6 +359,13 @@ final class WindowManager: ObservableObject {
         focusedWindowID = id
     }
 
+    /// ウィンドウのリサイズ成否状態を更新する
+    func setResizeFailed(id: String, failed: Bool) {
+        if let idx = managedWindows.firstIndex(where: { $0.id == id }) {
+            managedWindows[idx].isResizeFailed = failed
+        }
+    }
+
     /// レイアウト適用後の実際のフレームで ManagedWindow.frame を更新する
     /// stale なキャッシュを防ぎ、次回の screenIndex 計算を正確にする
     func updateFrames(_ frames: [(id: String, frame: CGRect)]) {

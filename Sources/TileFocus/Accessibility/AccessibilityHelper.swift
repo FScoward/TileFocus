@@ -139,21 +139,21 @@ enum AccessibilityHelper {
 
     // MARK: - Move & Resize
 
-    /// ウィンドウを指定位置・サイズに即時移動
-    ///
-    /// - Note: asyncAfter は使わない → AXWindowMovedNotification の連鎖を防ぐ
-    static func moveAndResize(window: AXUIElement, to position: CGPoint, size: CGSize) {
+    /// ウィンドウを指定位置・サイズに即時移動し、リサイズが成功したかを返す
+    @discardableResult
+    static func moveAndResize(window: AXUIElement, to position: CGPoint, size: CGSize) -> Bool {
         let title = getTitle(of: window) ?? "?"
         var pid: pid_t = 0
         AXUIElementGetPid(window, &pid)
         Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" → pos=\(position) size=\(size)")
         setPosition(of: window, to: position)
-        setSize(of: window, to: size)
+        return setSize(of: window, to: size)
     }
 
     /// ウィンドウを指定フレームに即時移動・リサイズ
-    static func setFrame(_ frame: CGRect, to window: AXUIElement) {
-        moveAndResize(window: window, to: frame.origin, size: frame.size)
+    @discardableResult
+    static func setFrame(_ frame: CGRect, to window: AXUIElement) -> Bool {
+        return moveAndResize(window: window, to: frame.origin, size: frame.size)
     }
 
     // MARK: - Title
@@ -249,13 +249,15 @@ enum AccessibilityHelper {
         }
     }
 
-    private static func setSize(of window: AXUIElement, to size: CGSize) {
+    private static func setSize(of window: AXUIElement, to size: CGSize) -> Bool {
         var sz = size
-        guard let sizeValue = AXValueCreate(.cgSize, &sz) else { return }
+        guard let sizeValue = AXValueCreate(.cgSize, &sz) else { return false }
         let result = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
         if result != .success {
             Log.warn(tag, "setSize failed result=\(result.rawValue) size=\(size)")
+            return false
         }
+        return true
     }
 
     /// ウィンドウがフルスクリーン状態かどうか判定
