@@ -334,9 +334,55 @@ struct StageTopBarView: View {
                     }
                 }
                 .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 3)
+                    ZStack {
+                        // リキッドグラスの背後のカラフルな液体要素 (Liquid Blobs)
+                        if windowManager.isStagedWindowsBarExpanded {
+                            GeometryReader { geo in
+                                ZStack {
+                                    // 左側の紫のBlob
+                                    Circle()
+                                        .fill(Color.purple.opacity(0.15))
+                                        .frame(width: geo.size.width * 0.4)
+                                        .blur(radius: 25)
+                                        .offset(x: -geo.size.width * 0.1, y: -geo.size.height * 0.2)
+                                    
+                                    // 右側の青〜ピンクのBlob
+                                    Circle()
+                                        .fill(Color.blue.opacity(0.13))
+                                        .frame(width: geo.size.width * 0.35)
+                                        .blur(radius: 20)
+                                        .offset(x: geo.size.width * 0.5, y: geo.size.height * 0.1)
+
+                                    Circle()
+                                        .fill(Color.pink.opacity(0.06))
+                                        .frame(width: geo.size.width * 0.25)
+                                        .blur(radius: 18)
+                                        .offset(x: geo.size.width * 0.2, y: -geo.size.height * 0.1)
+                                }
+                            }
+                        }
+                        
+                        // 最前面のガラスプレート
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(.ultraThinMaterial)
+                    }
+                    .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
+                    .overlay(
+                        // 外側の極細のガラス反射枠
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.25),
+                                        Color.white.opacity(0.05),
+                                        Color.black.opacity(0.15)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.8
+                            )
+                    )
                 )
                 .transition(.opacity) // 滑らかな表示切り替え
             } else {
@@ -398,15 +444,56 @@ struct StageTopBarView: View {
         
         let crownFg = isMaster ? Color.yellow : (isStaged ? Color.secondary.opacity(0.4) : Color.secondary.opacity(0.7))
         
-        let mainBg: Color = {
-            if hoveredWindowID == window.id {
-                return isMaster ? Color.yellow.opacity(0.15) : (isStaged ? Color.secondary.opacity(0.12) : Color.accentColor.opacity(0.15))
-            } else {
-                return isMaster ? Color.yellow.opacity(0.08) : (isStaged ? Color.clear : Color.accentColor.opacity(0.06))
-            }
-        }()
+        let isHovered = hoveredWindowID == window.id
+
+        // --- リキッドグラス効果のためのグラデーション定義 ---
+        let hoverGradient = LinearGradient(
+            colors: [
+                Color.purple.opacity(0.18),
+                Color.blue.opacity(0.18)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
         
-        let mainStroke = isMaster ? Color.yellow.opacity(0.3) : (isStaged ? Color.clear : Color.accentColor.opacity(0.2))
+        let masterGradient = LinearGradient(
+            colors: [
+                Color.yellow.opacity(0.18),
+                Color.orange.opacity(0.08)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        let normalGradient = LinearGradient(
+            colors: [
+                Color.white.opacity(isStaged ? 0.015 : 0.04),
+                Color.white.opacity(isStaged ? 0.005 : 0.015)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        
+        // ガラスの反射を感じさせる細い枠線
+        let borderGradient = LinearGradient(
+            colors: [
+                Color.white.opacity(isHovered ? 0.35 : 0.15),
+                Color.white.opacity(0.05),
+                Color.black.opacity(0.1)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        
+        let masterBorderGradient = LinearGradient(
+            colors: [
+                Color.yellow.opacity(0.4),
+                Color.yellow.opacity(0.1),
+                Color.clear
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
         
         let itemContent = HStack(spacing: 2) {
             // 1. 左側: メイン（マスター）に設定するボタン（クリックのデフォルト動作）
@@ -441,13 +528,37 @@ struct StageTopBarView: View {
                 .padding(.horizontal, 5)
                 .padding(.vertical, 4)
                 .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(mainBg)
+                    ZStack {
+                        // ガラスのすりガラス背景
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(.ultraThinMaterial)
+                        
+                        // ホバー時・マスター時の有機的なリキッドグラデーション
+                        if isMaster {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(masterGradient)
+                        } else if isHovered {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(hoverGradient)
+                        } else {
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(normalGradient)
+                        }
+                    }
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 4)
-                        .stroke(mainStroke, lineWidth: 0.5)
+                    // ガラスの反射を感じさせるシャープなボーダー
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(isMaster ? masterBorderGradient : borderGradient, lineWidth: 0.8)
                 )
+                .shadow(
+                    color: isHovered ? (isMaster ? Color.yellow.opacity(0.12) : Color.purple.opacity(0.12)) : Color.clear,
+                    radius: 3,
+                    x: 0,
+                    y: 1.5
+                )
+                .scaleEffect(isHovered ? 1.02 : 1.0)
+                .animation(.spring(response: 0.22, dampingFraction: 0.65, blendDuration: 0), value: isHovered)
             }
             .buttonStyle(.plain)
             .onHover { hovering in
