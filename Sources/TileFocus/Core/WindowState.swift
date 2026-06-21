@@ -17,12 +17,16 @@ enum WindowState: String, Codable {
 // MARK: - AppMode
 
 /// アプリ全体のモード
-enum AppMode: String, CaseIterable, Identifiable {
+enum AppMode: String, Identifiable {
     case off
     case tiling
     case focus
 
     var id: String { rawValue }
+
+    static var allCases: [AppMode] {
+        [.off, .focus]
+    }
 
     var displayName: String {
         switch self {

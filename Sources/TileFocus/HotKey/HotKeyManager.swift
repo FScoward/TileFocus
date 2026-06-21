@@ -31,11 +31,7 @@ final class HotKeyManager {
     // MARK: - Registration
 
     func registerHotKeys() {
-        // Tiling Mode ON/OFF: Cmd+Ctrl+T
-        let tilingHK = HotKey(key: Key.t, modifiers: NSEvent.ModifierFlags([.command, .control]))
-        tilingHK.keyDownHandler = { [weak self] in
-            Task { @MainActor in self?.windowManager?.switchMode(to: .tiling) }
-        }
+        // Tiling Mode は無効化
 
         // Focus Mode ON/OFF: Cmd+Ctrl+F
         let focusHK = HotKey(key: Key.f, modifiers: NSEvent.ModifierFlags([.command, .control]))
@@ -73,7 +69,7 @@ final class HotKeyManager {
             Task { @MainActor in self?.windowManager?.promoteCurrentWindowToMaster() }
         }
 
-        hotKeys = [tilingHK, focusHK, stageHK, restoreHK, nextLayoutHK, prevLayoutHK, masterHK]
+        hotKeys = [focusHK, stageHK, restoreHK, nextLayoutHK, prevLayoutHK, masterHK]
         print("[HotKeyManager] \(hotKeys.count) 個のホットキーを登録")
     }
 

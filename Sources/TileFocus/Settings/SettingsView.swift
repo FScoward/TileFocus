@@ -13,11 +13,7 @@ struct SettingsView: View {
                 }
                 .tag(0)
 
-            TilingSettingsTab()
-                .tabItem {
-                    Label("タイリング", systemImage: "rectangle.3.group")
-                }
-                .tag(1)
+
 
             HotKeySettingsTab()
                 .tabItem {
@@ -104,7 +100,6 @@ private struct TilingSettingsTab: View {
 
 private struct HotKeySettingsTab: View {
     private let hotKeys: [(String, String)] = [
-        ("Tiling Mode ON/OFF", "⌃⌘T"),
         ("Focus Mode ON/OFF", "⌃⌘F"),
         ("フォーカス中のウィンドウを格納", "⌃⌘S"),
         ("格納ウィンドウを全復帰", "⌃⌘R"),
