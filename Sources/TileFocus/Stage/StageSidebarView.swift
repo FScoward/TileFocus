@@ -187,7 +187,7 @@ struct StageTopBarView: View {
     @State private var tempWindows: [ManagedWindow] = []
 
     /// このスクリーンに所属するすべてのウィンドウ（表示中 + 格納中）
-    /// ユーザーが定義したカスタムオーダーがある場合はそれに従い、無ければアプリ名・タイトル順にソートします
+    /// 王冠（フォーカスウィンドウ）を常に先頭にし、残りはユーザー定義のカスタムオーダー（無ければアプリ名・タイトル順）でソートします
     private var allWindowsForScreen: [ManagedWindow] {
         let screenManager = ScreenManager()
         let all = windowManager.managedWindows + windowManager.stagedWindows
@@ -197,25 +197,51 @@ struct StageTopBarView: View {
             return winScreen == screen
         }
         
-        return filtered.sorted { w1, w2 in
-            let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
-            let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
-            
-            switch (idx1, idx2) {
-            case (.some(let i1), .some(let i2)):
-                return i1 < i2
-            case (.some, .none):
-                return true // カスタムオーダーがある方を前にする
-            case (.none, .some):
-                return false
-            case (.none, .none):
-                if w1.appName != w2.appName {
-                    return w1.appName < w2.appName
+        var result = filtered
+        if let focusedID = windowManager.focusedWindowID,
+           let masterIndex = result.firstIndex(where: { $0.id == focusedID }) {
+            let master = result.remove(at: masterIndex)
+            let sortedOthers = result.sorted { w1, w2 in
+                let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
+                let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
+                
+                switch (idx1, idx2) {
+                case (.some(let i1), .some(let i2)):
+                    return i1 < i2
+                case (.some, .none):
+                    return true
+                case (.none, .some):
+                    return false
+                case (.none, .none):
+                    if w1.appName != w2.appName {
+                        return w1.appName < w2.appName
+                    }
+                    return w1.title < w2.title
                 }
-                return w1.title < w2.title
+            }
+            return [master] + sortedOthers
+        } else {
+            return result.sorted { w1, w2 in
+                let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
+                let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
+                
+                switch (idx1, idx2) {
+                case (.some(let i1), .some(let i2)):
+                    return i1 < i2
+                case (.some, .none):
+                    return true
+                case (.none, .some):
+                    return false
+                case (.none, .none):
+                    if w1.appName != w2.appName {
+                        return w1.appName < w2.appName
+                    }
+                    return w1.title < w2.title
+                }
             }
         }
     }
+
 
     // 1行4列のグリッドレイアウト
     private let columns = [
@@ -358,7 +384,7 @@ struct StageTopBarView: View {
         
         let mainStroke = isMaster ? Color.yellow.opacity(0.3) : (isStaged ? Color.clear : Color.accentColor.opacity(0.2))
         
-        HStack(spacing: 2) {
+        let itemContent = HStack(spacing: 2) {
             // 1. 左側: メイン（マスター）に設定するボタン（クリックのデフォルト動作）
             Button {
                 if isStaged {
@@ -435,16 +461,22 @@ struct StageTopBarView: View {
         )
         .frame(width: 140) // グリッドの各アイテム幅を140pxに固定
         .contentShape(Rectangle())
-        .onDrag {
-            self.draggedWindow = window
-            return NSItemProvider(item: window.id as NSString, typeIdentifier: UTType.text.identifier)
+
+        if isMaster {
+            itemContent
+        } else {
+            itemContent
+                .onDrag {
+                    self.draggedWindow = window
+                    return NSItemProvider(item: window.id as NSString, typeIdentifier: UTType.text.identifier)
+                }
+                .onDrop(of: [UTType.text], delegate: WindowDropDelegate(
+                    item: window,
+                    tempWindows: $tempWindows,
+                    windowManager: windowManager,
+                    draggedItem: $draggedWindow
+                ))
         }
-        .onDrop(of: [UTType.text], delegate: WindowDropDelegate(
-            item: window,
-            tempWindows: $tempWindows,
-            windowManager: windowManager,
-            draggedItem: $draggedWindow
-        ))
     }
 }
 
@@ -462,6 +494,9 @@ struct WindowDropDelegate: DropDelegate {
               let toIndex = tempWindows.firstIndex(where: { $0.id == item.id }) else {
             return
         }
+
+        // 王冠（インデックス0）が関わる並べ替えは無視する
+        guard fromIndex > 0 && toIndex > 0 else { return }
 
         if fromIndex != toIndex {
             withAnimation(.easeInOut(duration: 0.2)) {
