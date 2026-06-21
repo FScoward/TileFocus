@@ -18,6 +18,7 @@ final class FocusModeController {
 
     private var focusedWindowID: String?
     private var masterWindowID: String?
+    private var focusHistory: [String] = []
     private var workspaceObservers: [NSObjectProtocol] = []
     private var updateWorkItem: DispatchWorkItem?
     /// applyLayout() 実行中フラグ
@@ -191,6 +192,7 @@ final class FocusModeController {
     /// ウィンドウが閉じられた時の処理
     func handleWindowClosed(id: String) {
         Log.info(Self.tag, "handleWindowClosed() windowID=\(id)")
+        focusHistory.removeAll { $0 == id }
         if masterWindowID == id {
             if let windowManager {
                 let remaining = windowManager.managedWindows.filter { $0.id != id && $0.state != .staged }
@@ -213,6 +215,18 @@ final class FocusModeController {
     private func setFocusedWindowID(_ id: String?) {
         focusedWindowID = id
         windowManager?.updateFocusedWindowID(id)
+        if let id {
+            updateFocusHistory(with: id)
+        }
+    }
+
+    private func updateFocusHistory(with id: String) {
+        focusHistory.removeAll { $0 == id }
+        focusHistory.insert(id, at: 0)
+        if focusHistory.count > 50 {
+            focusHistory.removeLast()
+        }
+        Log.debug(Self.tag, "updateFocusHistory: \(focusHistory)")
     }
 
     // MARK: - Layout Application
@@ -240,6 +254,22 @@ final class FocusModeController {
 
         // マスターウィンドウを先頭に並び替え
         var ordered = windows
+        
+        // focusHistory に基づいて ordered を並び替える（最近フォーカスされたものが先頭）
+        ordered.sort { w1, w2 in
+            let idx1 = focusHistory.firstIndex(of: w1.id)
+            let idx2 = focusHistory.firstIndex(of: w2.id)
+            switch (idx1, idx2) {
+            case (.some(let i1), .some(let i2)):
+                return i1 < i2
+            case (.some, .none):
+                return true
+            case (.none, .some):
+                return false
+            case (.none, .none):
+                return false
+            }
+        }
         
         // masterWindowID が無効なら focusedWindowID をマスターとして設定
         if let masterID = masterWindowID, ordered.contains(where: { $0.id == masterID }) {
