@@ -296,11 +296,44 @@ final class FocusModeController {
 
         for (si, group) in screenGroups.enumerated() {
             guard !group.isEmpty else { continue }
+            
+            // メインウィンドウの数を決定
+            let mainCount: Int
+            if currentStyle == .splitCentered && group.count >= 2 {
+                mainCount = 2
+            } else {
+                mainCount = 1
+            }
+            
+            let mains = Array(group.prefix(mainCount))
+            let sides = Array(group.dropFirst(mainCount))
+            
+            // sides を customWindowOrder に基づいてソート
+            let sortedSides = sides.sorted { w1, w2 in
+                let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
+                let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
+                switch (idx1, idx2) {
+                case (.some(let i1), .some(let i2)):
+                    return i1 < i2
+                case (.some, .none):
+                    return true
+                case (.none, .some):
+                    return false
+                case (.none, .none):
+                    if w1.appName != w2.appName {
+                        return w1.appName < w2.appName
+                    }
+                    return w1.title < w2.title
+                }
+            }
+            
+            let sortedGroup = mains + sortedSides
+
             let screen = screens[si]
             let screenAXFrame = screenManager.visibleFrameInAX(for: screen)
-            Log.info(Self.tag, "  Screen[\(si)] \(group.count)枚 AXFrame=\(screenAXFrame)")
+            Log.info(Self.tag, "  Screen[\(si)] \(sortedGroup.count)枚 AXFrame=\(screenAXFrame)")
 
-            let idealFrames = activeLayout.calculateFrames(windowCount: group.count, screenFrame: screenAXFrame)
+            let idealFrames = activeLayout.calculateFrames(windowCount: sortedGroup.count, screenFrame: screenAXFrame)
 
             // 左右サイドバー of 配置 Y 座標の追跡
             var currentLeftY = screenAXFrame.minY + gap.outer
@@ -312,7 +345,7 @@ final class FocusModeController {
             var actualRightX: CGFloat? = nil
             var actualRightW: CGFloat? = nil
 
-            for (i, window) in group.enumerated() {
+            for (i, window) in sortedGroup.enumerated() {
                 guard let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) else {
                     Log.error(Self.tag, "    ⚠️ AXウィンドウが見つかりません pid=\(window.pid) title=\(window.title)")
                     continue

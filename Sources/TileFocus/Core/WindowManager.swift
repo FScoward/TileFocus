@@ -29,7 +29,11 @@ final class WindowManager: ObservableObject {
     @Published private(set) var focusedWindowID: String?
 
     /// ユーザーがドラッグ＆ドロップで並べ替えたウィンドウIDの順序
-    @Published var customWindowOrder: [String] = []
+    @Published var customWindowOrder: [String] = [] {
+        didSet {
+            triggerLayoutUpdate()
+        }
+    }
 
     /// 上部格納バーが展開されているかどうか
     @Published var isStagedWindowsBarExpanded: Bool = false
@@ -42,6 +46,18 @@ final class WindowManager: ObservableObject {
             }
         }
     }
+
+    private func triggerLayoutUpdate() {
+        switch currentMode {
+        case .tiling:
+            tilingController?.retile()
+        case .focus:
+            focusController?.scheduleLayoutUpdate()
+        case .off:
+            break
+        }
+    }
+
 
     // MARK: - Internal Components
 

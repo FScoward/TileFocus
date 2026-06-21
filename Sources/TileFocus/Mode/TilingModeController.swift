@@ -118,15 +118,35 @@ final class TilingModeController {
 
         for (idx, windows) in windowGroups.enumerated() {
             guard !windows.isEmpty else { continue }
+            
+            // customWindowOrder に基づいてソート
+            let sortedWindows = windows.sorted { w1, w2 in
+                let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
+                let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
+                switch (idx1, idx2) {
+                case (.some(let i1), .some(let i2)):
+                    return i1 < i2
+                case (.some, .none):
+                    return true
+                case (.none, .some):
+                    return false
+                case (.none, .none):
+                    if w1.appName != w2.appName {
+                        return w1.appName < w2.appName
+                    }
+                    return w1.title < w2.title
+                }
+            }
+
             let screen = screens[idx]
             let screenAXFrame = screenManager.visibleFrameInAX(for: screen)
-            let layout = resolveLayout(for: windows.count)
+            let layout = resolveLayout(for: sortedWindows.count)
 
-            Log.info(Self.tag, "Screen[\(idx)] \(windows.count)枚 layout=\(layout.name) AXFrame=\(screenAXFrame)")
+            Log.info(Self.tag, "Screen[\(idx)] \(sortedWindows.count)枚 layout=\(layout.name) AXFrame=\(screenAXFrame)")
 
-            let frames = layout.calculateFrames(windowCount: windows.count, screenFrame: screenAXFrame)
+            let frames = layout.calculateFrames(windowCount: sortedWindows.count, screenFrame: screenAXFrame)
 
-            for (i, window) in windows.enumerated() {
+            for (i, window) in sortedWindows.enumerated() {
                 guard i < frames.count else { break }
                 let targetFrame = frames[i]
                 Log.info(Self.tag, "  [\(i)] \"\(window.appName) - \(window.title)\" → \(targetFrame)")
