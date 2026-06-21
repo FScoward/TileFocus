@@ -256,7 +256,28 @@ final class FocusModeController {
         // staged も含めた全ウィンドウを対象とする（ホバーバーの表示順と同期するため）
         let allWindows = windowManager.managedWindows + windowManager.stagedWindows
 
-        Log.info(Self.tag, "applyLayout() 開始 focusedID=\(focusedWindowID ?? "nil") 対象=\(allWindows.count)枚")
+        // マスターウィンドウが格納されている、消失している、あるいは未設定の場合の自動補正
+        if let currentMasterID = masterWindowID {
+            let isStaged = windowManager.stagedWindows.contains(where: { $0.id == currentMasterID })
+            let exists = allWindows.contains(where: { $0.id == currentMasterID })
+            if isStaged || !exists {
+                let remaining = windowManager.managedWindows.filter { $0.state != .staged }
+                if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
+                    Log.info(Self.tag, "マスターウィンドウが格納または消失したため、新マスターに自動移譲: \(nextMaster.appName) (id=\(nextMaster.id))")
+                    setMasterWindowID(nextMaster.id)
+                } else {
+                    setMasterWindowID(nil)
+                }
+            }
+        } else if !allWindows.isEmpty {
+            let remaining = windowManager.managedWindows.filter { $0.state != .staged }
+            if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
+                Log.info(Self.tag, "マスターウィンドウが未設定のため、新マスターに自動設定: \(nextMaster.appName) (id=\(nextMaster.id))")
+                setMasterWindowID(nextMaster.id)
+            }
+        }
+
+        Log.info(Self.tag, "applyLayout() 開始 focusedID=\(focusedWindowID ?? "nil") masterID=\(masterWindowID ?? "nil") 対象=\(allWindows.count)枚")
 
         guard !allWindows.isEmpty else {
             Log.warn(Self.tag, "applyLayout: 対象ウィンドウなし")
