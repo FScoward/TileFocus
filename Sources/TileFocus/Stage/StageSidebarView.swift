@@ -23,6 +23,13 @@ class StageTopBarPanel: NSPanel {
         setupTrackingArea()
     }
 
+    // ★重要: 画面外へのはみ出し制限を無効化し、指定した画面外座標に正確にスライドして隠せるようにする
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        return frameRect
+    }
+
+
+
     private func setupTrackingArea() {
         let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
         let area = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
@@ -46,7 +53,7 @@ final class StageTopBarController: NSObject {
     
     private let barWidth: CGFloat = 600
     private let barHeight: CGFloat = 64
-    private let visibleOffset: CGFloat = 6 // 隠れている時に画面内に下端を露出させるピクセル数
+    private let visibleOffset: CGFloat = 8 // 隠れている時に画面内に露出させるピクセル数（ホバー検知用）
     
     @MainActor
     func show(windowManager: WindowManager) {
@@ -59,6 +66,8 @@ final class StageTopBarController: NSObject {
             let initialX = screenFrame.minX + (screenFrame.width - barWidth) / 2
             let initialY = screenFrame.maxY - visibleOffset
             let panelFrame = CGRect(x: initialX, y: initialY, width: barWidth, height: barHeight)
+            
+            Log.info("StageTopBarController", "画面 '\(screen.localizedName)': visibleFrame=\(screenFrame), panelFrame=\(panelFrame)")
             
             let panel = StageTopBarPanel(contentRect: panelFrame)
             
@@ -157,9 +166,9 @@ struct StageTopBarView: View {
                     .frame(height: 58)
             }
             
-            // 下部中央のインジケーター（ホバー時のヒント。非展開時もわずかに見える）
+            // 下部中央のインジケーター（ホバー時のヒント。非展開時も極小のガイド線として見える）
             RoundedRectangle(cornerRadius: 1)
-                .fill(Color.secondary.opacity(windowManager.isStagedWindowsBarExpanded ? 0.3 : 0.15))
+                .fill(Color.secondary.opacity(windowManager.isStagedWindowsBarExpanded ? 0.3 : 0.25))
                 .frame(width: 40, height: 2)
                 .padding(.bottom, 1)
         }
@@ -169,8 +178,8 @@ struct StageTopBarView: View {
                 .fill(.ultraThinMaterial)
                 .shadow(color: .black.opacity(windowManager.isStagedWindowsBarExpanded ? 0.25 : 0.0), radius: 8, x: 0, y: 3)
         )
-        // 非展開時は透明度を極限まで下げて見えなくするが、ヒットテストを有効にするため 0.01 に設定
-        .opacity(windowManager.isStagedWindowsBarExpanded ? 1.0 : 0.01)
+        // 非展開時は透明度を 0.05 にし、わずかにガイド線（インジケーター）が見え、かつヒットテストが確実に効くようにする
+        .opacity(windowManager.isStagedWindowsBarExpanded ? 1.0 : 0.05)
         .animation(.easeInOut(duration: 0.18), value: windowManager.isStagedWindowsBarExpanded)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .contentShape(Rectangle()) // ヒットテストをビュー全体で有効にする
