@@ -161,7 +161,7 @@ struct StageTopBarView: View {
                         Spacer()
                         Text("格納中のウィンドウはありません")
                             .font(.caption)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.secondary)
                         Spacer()
                     } else {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -176,21 +176,27 @@ struct StageTopBarView: View {
                     }
                 }
                 .frame(height: 58)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                        .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 3)
+                )
+                .transition(.opacity) // 滑らかな表示切り替え
             } else {
+                // 非展開時は高さを維持するためのダミー領域（透明だがヒットテスト可能）
                 Spacer()
+                    .frame(height: 58)
             }
             
-            // 非展開時も見えやすいように、下部に赤い境界線を表示（デバッグ用！）
-            Rectangle()
-                .fill(windowManager.isStagedWindowsBarExpanded ? Color.clear : Color.red)
-                .frame(height: 2)
+            // 下部中央のインジケーター（ホバー時のヒント。非展開時も極薄のガイド線として見える）
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color.secondary.opacity(windowManager.isStagedWindowsBarExpanded ? 0.35 : 0.12))
+                .frame(width: 40, height: 2)
+                .padding(.bottom, 1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // デバッグ用に背景色を半透明の赤にし、どこにあるか絶対に視認できるようにする
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(windowManager.isStagedWindowsBarExpanded ? Color.black.opacity(0.8) : Color.red.opacity(0.3))
-        )
+        // 普段は完全に透明（ヒットテスト用のアルファ）
+        .background(Color.black.opacity(0.001))
         .contentShape(Rectangle())
         .animation(.easeInOut(duration: 0.18), value: windowManager.isStagedWindowsBarExpanded)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -205,22 +211,22 @@ struct StageTopBarView: View {
                 // アプリアイコンの代用
                 ZStack {
                     RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.white.opacity(0.2))
+                        .fill(Color.accentColor.opacity(0.15))
                     Text(String(window.appName.prefix(1)))
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Color.white)
+                        .foregroundStyle(Color.accentColor)
                 }
                 .frame(width: 20, height: 20)
 
                 VStack(alignment: .leading, spacing: 0) {
                     Text(window.appName)
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .lineLimit(1)
                     if !window.title.isEmpty && window.title != window.appName {
                         Text(window.title)
                             .font(.system(size: 8))
-                            .foregroundStyle(.white.opacity(0.7))
+                            .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
@@ -231,8 +237,8 @@ struct StageTopBarView: View {
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(hoveredWindowID == window.id
-                          ? Color.white.opacity(0.3)
-                          : Color.white.opacity(0.1))
+                          ? Color.accentColor.opacity(0.12)
+                          : Color.secondary.opacity(0.05))
             )
         }
         .buttonStyle(.plain)
