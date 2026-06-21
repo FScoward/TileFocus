@@ -106,6 +106,12 @@ final class TilingModeController {
                let realFrame = AccessibilityHelper.getFrame(of: axWindow) {
                 currentFrame = realFrame
             }
+            
+            // 画面外（-4000など）に退避されている場合、退避前の元の座標を優先してスクリーン判定を行う
+            if currentFrame.origin.x < -1000, let beforeStaging = window.frameBeforeStaging {
+                currentFrame = beforeStaging
+            }
+            
             let idx = screenIndex(for: currentFrame, in: screens)
             Log.debug(Self.tag, "  \"\(window.appName)\" → Screen[\(idx)]")
             windowGroups[idx].append(window)

@@ -539,10 +539,18 @@ struct WindowDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         self.draggedItem = nil
-        // ドロップ確定時に WindowManager のオーダーを更新し、実際のレイアウト移動を実行
-        windowManager.customWindowOrder = tempWindows.map { $0.id }
+        // ドロップ確定時に WindowManager のオーダーを更新（他のスクリーンに属するウィンドウ順序を消去しないようマージする）
+        let targetIDs = Set(tempWindows.map { $0.id })
+        var currentOrder = windowManager.customWindowOrder
+        
+        let insertIndex = currentOrder.firstIndex { targetIDs.contains($0) } ?? currentOrder.count
+        currentOrder.removeAll { targetIDs.contains($0) }
+        currentOrder.insert(contentsOf: tempWindows.map { $0.id }, at: insertIndex)
+        
+        windowManager.customWindowOrder = currentOrder
         return true
     }
+
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         return DropProposal(operation: .move)
