@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 /// ホバー検出用のカスタムコンテナビュー（NSHostingView をラップしてホバーイベントを確実にキャッチする）
 class StageTopBarContainerView: NSView {
@@ -182,21 +183,36 @@ struct StageTopBarView: View {
     @EnvironmentObject private var windowManager: WindowManager
     let screen: NSScreen
     @State private var hoveredWindowID: String?
+    @State private var draggedWindow: ManagedWindow?
 
     /// このスクリーンに所属するすべてのウィンドウ（表示中 + 格納中）
-    /// 位置を固定するため、アプリ名・タイトル順にソートします
+    /// ユーザーが定義したカスタムオーダーがある場合はそれに従い、無ければアプリ名・タイトル順にソートします
     private var allWindowsForScreen: [ManagedWindow] {
         let screenManager = ScreenManager()
         let all = windowManager.managedWindows + windowManager.stagedWindows
-        return all.filter { window in
+        let filtered = all.filter { window in
             let frame = window.frameBeforeStaging ?? window.frame
             let winScreen = screenManager.screen(containingAXFrame: frame)
             return winScreen == screen
-        }.sorted { w1, w2 in
-            if w1.appName != w2.appName {
-                return w1.appName < w2.appName
+        }
+        
+        return filtered.sorted { w1, w2 in
+            let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
+            let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
+            
+            switch (idx1, idx2) {
+            case (.some(let i1), .some(let i2)):
+                return i1 < i2
+            case (.some, .none):
+                return true // カスタムオーダーがある方を前にする
+            case (.none, .some):
+                return false
+            case (.none, .none):
+                if w1.appName != w2.appName {
+                    return w1.appName < w2.appName
+                }
+                return w1.title < w2.title
             }
-            return w1.title < w2.title
         }
     }
 
@@ -299,49 +315,64 @@ struct StageTopBarView: View {
         // 現在フォーカス（メイン）されているかどうか
         let isMaster = windowManager.focusedWindowID == window.id
         
+        // 型推論エラーを避けるためにスタイル変数を切り出し
+        let appLetterBg = isStaged ? Color.secondary.opacity(0.15) : Color.accentColor.opacity(0.15)
+        let appLetterFg = isStaged ? Color.secondary : Color.accentColor
+        
+        let appNameWeight: Font.Weight = isStaged ? .regular : (isMaster ? .bold : .semibold)
+        let appNameFg = isStaged ? Color.secondary : Color.primary
+        
+        let crownFg = isMaster ? Color.yellow : (isStaged ? Color.secondary.opacity(0.4) : Color.secondary.opacity(0.7))
+        
+        let mainBg: Color = {
+            if hoveredWindowID == window.id {
+                return isMaster ? Color.yellow.opacity(0.15) : (isStaged ? Color.secondary.opacity(0.12) : Color.accentColor.opacity(0.15))
+            } else {
+                return isMaster ? Color.yellow.opacity(0.08) : (isStaged ? Color.clear : Color.accentColor.opacity(0.06))
+            }
+        }()
+        
+        let mainStroke = isMaster ? Color.yellow.opacity(0.3) : (isStaged ? Color.clear : Color.accentColor.opacity(0.2))
+        
         HStack(spacing: 2) {
-            // 1. 左側: 表示/非表示トグルボタン
+            // 1. 左側: メイン（マスター）に設定するボタン（クリックのデフォルト動作）
             Button {
                 if isStaged {
                     windowManager.unstageWindow(window)
-                } else {
-                    windowManager.stageWindow(window)
                 }
+                windowManager.switchFocusedWindow(to: window.id)
             } label: {
                 HStack(spacing: 4) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 4)
-                            .fill(isStaged ? Color.secondary.opacity(0.15) : Color.accentColor.opacity(0.15))
+                            .fill(appLetterBg)
                         Text(String(window.appName.prefix(1)))
                             .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(isStaged ? Color.secondary : Color.accentColor)
+                            .foregroundStyle(appLetterFg)
                     }
                     .frame(width: 16, height: 16)
 
                     Text(window.appName)
-                        .font(.system(size: 10, weight: isStaged ? .regular : .semibold))
-                        .foregroundStyle(isStaged ? .secondary : .primary)
+                        .font(.system(size: 10, weight: appNameWeight))
+                        .foregroundStyle(appNameFg)
                         .lineLimit(1)
                     
                     Spacer(minLength: 0)
                     
-                    Image(systemName: isStaged ? "eye.slash" : "eye.fill")
+                    // 状態を示す王冠アイコン
+                    Image(systemName: isMaster ? "crown.fill" : "crown")
                         .font(.system(size: 8))
-                        .foregroundStyle(isStaged ? Color.secondary.opacity(0.4) : Color.accentColor)
+                        .foregroundStyle(crownFg)
                 }
                 .padding(.horizontal, 5)
                 .padding(.vertical, 4)
                 .background(
                     RoundedRectangle(cornerRadius: 4)
-                        .fill(
-                            hoveredWindowID == window.id
-                            ? (isStaged ? Color.secondary.opacity(0.12) : Color.accentColor.opacity(0.15))
-                            : (isStaged ? Color.clear : Color.accentColor.opacity(0.06))
-                        )
+                        .fill(mainBg)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
-                        .stroke(isStaged ? Color.clear : Color.accentColor.opacity(0.2), lineWidth: 0.5)
+                        .stroke(mainStroke, lineWidth: 0.5)
                 )
             }
             .buttonStyle(.plain)
@@ -349,20 +380,21 @@ struct StageTopBarView: View {
                 hoveredWindowID = hovering ? window.id : nil
             }
 
-            // 2. 右側: メイン（マスター）に設定する王冠ボタン
+            // 2. 右側: 表示/非表示トグルボタン（サブ）
             Button {
                 if isStaged {
                     windowManager.unstageWindow(window)
+                } else {
+                    windowManager.stageWindow(window)
                 }
-                windowManager.switchFocusedWindow(to: window.id)
             } label: {
-                Image(systemName: isMaster ? "crown.fill" : "crown")
+                Image(systemName: isStaged ? "eye.slash" : "eye.fill")
                     .font(.system(size: 9))
-                    .foregroundStyle(isMaster ? Color.yellow : Color.secondary.opacity(0.4))
+                    .foregroundStyle(isStaged ? Color.secondary.opacity(0.4) : Color.accentColor)
                     .frame(width: 18, height: 18)
                     .background(
                         RoundedRectangle(cornerRadius: 3)
-                            .fill(isMaster ? Color.yellow.opacity(0.15) : Color.clear)
+                            .fill(isStaged ? Color.clear : Color.accentColor.opacity(0.12))
                     )
             }
             .buttonStyle(.plain)
@@ -378,5 +410,52 @@ struct StageTopBarView: View {
                 .stroke(isMaster ? Color.yellow.opacity(0.25) : Color.clear, lineWidth: 0.5)
         )
         .frame(width: 140) // グリッドの各アイテム幅を140pxに固定
+        .contentShape(Rectangle())
+        .onDrag {
+            self.draggedWindow = window
+            return NSItemProvider(item: window.id as NSString, typeIdentifier: UTType.text.identifier)
+        }
+        .onDrop(of: [UTType.text], delegate: WindowDropDelegate(
+            item: window,
+            currentWindows: allWindowsForScreen,
+            windowManager: windowManager,
+            draggedItem: $draggedWindow
+        ))
     }
 }
+
+struct WindowDropDelegate: DropDelegate {
+    let item: ManagedWindow
+    let currentWindows: [ManagedWindow]
+    let windowManager: WindowManager
+    @Binding var draggedItem: ManagedWindow?
+
+    func dropEntered(info: DropInfo) {
+        guard let draggedItem = draggedItem else { return }
+        guard draggedItem.id != item.id else { return }
+
+        guard let fromIndex = currentWindows.firstIndex(where: { $0.id == draggedItem.id }),
+              let toIndex = currentWindows.firstIndex(where: { $0.id == item.id }) else {
+            return
+        }
+
+        if fromIndex != toIndex {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                var newOrder = currentWindows
+                newOrder.remove(at: fromIndex)
+                newOrder.insert(draggedItem, at: toIndex)
+                windowManager.customWindowOrder = newOrder.map { $0.id }
+            }
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        self.draggedItem = nil
+        return true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        return DropProposal(operation: .move)
+    }
+}
+
