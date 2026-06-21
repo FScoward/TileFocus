@@ -312,14 +312,17 @@ struct StageTopBarView: View {
                                     ZStack(alignment: .topLeading) {
                                         windowItem(window)
                                         
-                                        // インデックスバッジ
+                                        // インデックスバッジ（フォーカス中はイエロー、その他はパープル。サイズも大きく影をつけて視認性向上）
                                         Text("\(index + 1)")
-                                            .font(.system(size: 8, weight: .bold))
+                                            .font(.system(size: 9, weight: .bold, design: .rounded))
                                             .foregroundStyle(.white)
-                                            .frame(width: 13, height: 13)
-                                            .background(Color.purple)
-                                            .clipShape(Circle())
-                                            .offset(x: -3, y: -3)
+                                            .frame(width: 16, height: 16)
+                                            .background(
+                                                Circle()
+                                                    .fill(window.id == windowManager.focusedWindowID ? Color.yellow : Color.purple)
+                                            )
+                                            .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)
+                                            .offset(x: -4, y: -4)
                                     }
                                 } else {
                                     windowItem(window)
@@ -388,6 +391,8 @@ struct StageTopBarView: View {
         let isStaged = windowManager.stagedWindows.contains(where: { $0.id == window.id })
         // 現在フォーカス（メイン）されているかどうか
         let isMaster = windowManager.focusedWindowID == window.id
+        let isDragging = draggedWindow?.id == window.id
+
         
         // 型推論エラーを避けるためにスタイル変数を切り出し
         let appLetterBg = isStaged ? Color.secondary.opacity(0.15) : Color.accentColor.opacity(0.15)
@@ -485,6 +490,8 @@ struct StageTopBarView: View {
         )
         .frame(width: 140) // グリッドの各アイテム幅を140pxに固定
         .contentShape(Rectangle())
+        .opacity(isDragging ? 0.35 : 1.0)
+
 
         if isMaster {
             itemContent
