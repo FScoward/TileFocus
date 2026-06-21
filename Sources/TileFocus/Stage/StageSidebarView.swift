@@ -521,8 +521,12 @@ struct WindowDropDelegate: DropDelegate {
             return
         }
 
-        // 王冠（インデックス0）が関わる並べ替えは無視する
-        guard fromIndex > 0 && toIndex > 0 else { return }
+        // 王冠（フォーカスウィンドウ）が関わる並べ替えは無視する（常に1番に固定）
+        let fromWindow = tempWindows[fromIndex]
+        let toWindow = tempWindows[toIndex]
+        guard fromWindow.id != windowManager.focusedWindowID && toWindow.id != windowManager.focusedWindowID else {
+            return
+        }
 
         if fromIndex != toIndex {
             withAnimation(.easeInOut(duration: 0.2)) {
