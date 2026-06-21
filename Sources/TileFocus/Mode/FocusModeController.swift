@@ -316,29 +316,45 @@ final class FocusModeController {
                 mainCount = 1
             }
             
-            let mains = Array(group.prefix(mainCount))
-            let sides = Array(group.dropFirst(mainCount))
-            
-            // sides を customWindowOrder に基づいてソート
-            let sortedSides = sides.sorted { w1, w2 in
-                let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
-                let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
-                switch (idx1, idx2) {
-                case (.some(let i1), .some(let i2)):
-                    return i1 < i2
-                case (.some, .none):
-                    return true
-                case (.none, .some):
-                    return false
-                case (.none, .none):
-                    if w1.appName != w2.appName {
-                        return w1.appName < w2.appName
-                    }
-                    return w1.title < w2.title
+            let mains: [ManagedWindow]
+            let sides: [ManagedWindow]
+
+            if currentStyle == .absoluteSplit2 || currentStyle == .absoluteSplit3 {
+                mains = Array(group.prefix(mainCount))
+                sides = Array(group.dropFirst(mainCount))
+
+                // 完全分割レイアウトでは、sides（上位からあぶれたウィンドウ）をDockに格納する
+                for window in sides {
+                    Log.info(Self.tag, "完全分割ルールにより格納: \"\(window.appName) - \(window.title)\"")
+                    windowManager.stageWindow(window, forceDock: true)
                 }
+            } else {
+                let tempMains = Array(group.prefix(mainCount))
+                let tempSides = Array(group.dropFirst(mainCount))
+
+                // sides を customWindowOrder に基づいてソート
+                let sortedSides = tempSides.sorted { w1, w2 in
+                    let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
+                    let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
+                    switch (idx1, idx2) {
+                    case (.some(let i1), .some(let i2)):
+                        return i1 < i2
+                    case (.some, .none):
+                        return true
+                    case (.none, .some):
+                        return false
+                    case (.none, .none):
+                        if w1.appName != w2.appName {
+                            return w1.appName < w2.appName
+                        }
+                        return w1.title < w2.title
+                    }
+                }
+                mains = tempMains
+                sides = sortedSides
             }
-            
-            let sortedGroup = mains + sortedSides
+
+            let sortedGroup = mains + (currentStyle == .absoluteSplit2 || currentStyle == .absoluteSplit3 ? [] : sides)
 
             let screen = screens[si]
             let screenAXFrame = screenManager.visibleFrameInAX(for: screen)
@@ -380,14 +396,9 @@ final class FocusModeController {
                     targetFrame = idealFrames[min(i, idealFrames.count - 1)]
                     role = "MAIN_\(i)"
                 } else {
-                    if currentStyle == .absoluteSplit2 || currentStyle == .absoluteSplit3 {
-                        // 完全2分割/完全3分割では、メイン以外のウィンドウは画面外に格納
-                        targetFrame = idealFrames[min(i, idealFrames.count - 1)]
-                        role = "OFFSCREEN[\(i)]"
-                    } else {
-                        // SIDE ウィンドウ
-                        let idealFrame = idealFrames[min(i, idealFrames.count - 1)]
-                    
+                    // SIDE ウィンドウ
+                    let idealFrame = idealFrames[min(i, idealFrames.count - 1)]
+
                     // 前回の実際の高さが、前回の理想の高さより大きい場合、それをこのウィンドウの最小高さ制限とみなす
                     // （ただし画面外退避されていた時の 200px は除外する。またリサイズ失敗したウィンドウも除外する）
                     let lastH = window.frame.height
@@ -399,7 +410,7 @@ final class FocusModeController {
                     } else {
                         minH = idealFrame.height
                     }
-                    
+
                     let isLeft: Bool
                     switch currentStyle {
                     case .centered:
@@ -413,12 +424,12 @@ final class FocusModeController {
                     case .absoluteSplit2, .absoluteSplit3:
                         isLeft = false
                     }
-                    
+
                     let currentY = isLeft ? currentLeftY : currentRightY
-                    
+
                     // 残り高さの計算
                     let remainingH = (screenAXFrame.minY + screenAXFrame.height - gap.outer) - currentY
-                    
+
                     if remainingH >= minSideWindowHeight && currentY + minSideWindowHeight <= screenAXFrame.minY + screenAXFrame.height - gap.outer {
                         let targetH = min(minH, remainingH)
                         targetFrame = CGRect(
@@ -444,7 +455,6 @@ final class FocusModeController {
                         role = "OFFSCREEN[\(i)]"
                     }
                 }
-            }
 
                 Log.info(Self.tag, "    \(role) \"\(window.appName) - \(window.title)\" → \(targetFrame)")
                 let success = AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)

@@ -17,7 +17,7 @@ final class StageManager {
 
     /// ウィンドウを格納する
     @MainActor
-    func stage(window: ManagedWindow, windowManager: WindowManager) {
+    func stage(window: ManagedWindow, windowManager: WindowManager, forceDock: Bool = false) {
         guard window.state != .staged else { return }
 
         var mutableWindow = window
@@ -26,7 +26,7 @@ final class StageManager {
         mutableWindow.state = .staged
 
         // 格納方法に基づいて処理
-        let method = AppSettings.shared.stageMethod
+        let method = forceDock ? StageMethod.dock : AppSettings.shared.stageMethod
         if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) {
             windowManager.setTilingInProgress(true)
             switch method {
@@ -51,7 +51,7 @@ final class StageManager {
         staged.append(mutableWindow)
         windowManager.updateStagedWindows(staged)
 
-        print("[StageManager] 格納: \(window.appName) - \(window.title)")
+        print("[StageManager] 格納: \(window.appName) - \(window.title) (method=\(method))")
 
         // タイリング中なら残りのウィンドウを再タイリング
         if windowManager.currentMode == .tiling {
@@ -80,6 +80,9 @@ final class StageManager {
             windowManager.setTilingInProgress(true)
             switch method {
             case .offscreen:
+                if AccessibilityHelper.isMinimized(axWindow) {
+                    AccessibilityHelper.restore(window: axWindow)
+                }
                 AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
             case .dock:
                 AccessibilityHelper.restore(window: axWindow)

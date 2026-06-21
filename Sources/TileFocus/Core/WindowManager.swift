@@ -275,8 +275,8 @@ final class WindowManager: ObservableObject {
     }
 
     /// ウィンドウを格納する
-    func stageWindow(_ window: ManagedWindow) {
-        stageManager?.stage(window: window, windowManager: self)
+    func stageWindow(_ window: ManagedWindow, forceDock: Bool = false) {
+        stageManager?.stage(window: window, windowManager: self, forceDock: forceDock)
     }
 
     /// 格納ウィンドウを復帰させる
