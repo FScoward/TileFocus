@@ -17,7 +17,7 @@ class StageTopBarPanel: NSPanel {
         self.level = .floating
         self.isOpaque = false
         self.backgroundColor = .clear
-        self.hasShadow = true
+        self.hasShadow = false // 影は collapsed 時にノイズになるため無効化（SwiftUI側で制御）
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
         
         setupTrackingArea()
@@ -46,6 +46,7 @@ final class StageTopBarController: NSObject {
     
     private let barWidth: CGFloat = 600
     private let barHeight: CGFloat = 64
+    private let collapsedHeight: CGFloat = 4 // 隠れている時の高さ
     
     @MainActor
     func show(windowManager: WindowManager) {
@@ -54,10 +55,10 @@ final class StageTopBarController: NSObject {
         for screen in NSScreen.screens {
             let screenFrame = screen.visibleFrame
             
-            // 初期状態（折りたたまれた状態 = 上端に4pxだけ露出）
+            // 初期状態（折りたたまれた状態 = 高さ 4px）
             let initialX = screenFrame.minX + (screenFrame.width - barWidth) / 2
-            let initialY = screenFrame.maxY - 4
-            let panelFrame = CGRect(x: initialX, y: initialY, width: barWidth, height: barHeight)
+            let initialY = screenFrame.maxY - collapsedHeight
+            let panelFrame = CGRect(x: initialX, y: initialY, width: barWidth, height: collapsedHeight)
             
             let panel = StageTopBarPanel(contentRect: panelFrame)
             
@@ -67,13 +68,15 @@ final class StageTopBarController: NSObject {
             panel.contentView = hosting
             
             // ホバーイベントの紐付け
-            panel.onMouseEnter = { [weak self, weak panel] in
+            panel.onMouseEnter = { [weak self, weak panel, weak windowManager] in
                 guard let self, let panel else { return }
+                windowManager?.isStagedWindowsBarExpanded = true
                 self.updatePanelCollapseState(collapsed: false, panel: panel, screen: screen)
             }
             
-            panel.onMouseExit = { [weak self, weak panel] in
+            panel.onMouseExit = { [weak self, weak panel, weak windowManager] in
                 guard let self, let panel else { return }
+                windowManager?.isStagedWindowsBarExpanded = false
                 self.updatePanelCollapseState(collapsed: true, panel: panel, screen: screen)
             }
             
@@ -93,12 +96,13 @@ final class StageTopBarController: NSObject {
     private func updatePanelCollapseState(collapsed: Bool, panel: StageTopBarPanel, screen: NSScreen) {
         let screenFrame = screen.visibleFrame
         let x = screenFrame.minX + (screenFrame.width - barWidth) / 2
-        let y = collapsed ? (screenFrame.maxY - 4) : (screenFrame.maxY - barHeight)
+        let targetHeight = collapsed ? collapsedHeight : barHeight
+        let targetY = screenFrame.maxY - targetHeight
         
-        let targetFrame = CGRect(x: x, y: y, width: barWidth, height: barHeight)
+        let targetFrame = CGRect(x: x, y: targetY, width: barWidth, height: targetHeight)
         
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.2
+            context.duration = 0.18
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().setFrame(targetFrame, display: true)
         }
@@ -123,39 +127,45 @@ struct StageTopBarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
-                if stagedWindowsForScreen.isEmpty {
-                    Spacer()
-                    Text("格納中のウィンドウはありません")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                } else {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(stagedWindowsForScreen) { window in
-                                stagedWindowItem(window)
+            if windowManager.isStagedWindowsBarExpanded {
+                HStack(spacing: 0) {
+                    if stagedWindowsForScreen.isEmpty {
+                        Spacer()
+                        Text("格納中のウィンドウはありません")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    } else {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(stagedWindowsForScreen) { window in
+                                    stagedWindowItem(window)
+                                }
                             }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
                     }
                 }
+                .frame(height: 58)
+            } else {
+                Spacer()
             }
-            .frame(height: 58)
             
-            // 下部中央のインジケーター（ホバー時のヒント）
+            // 下部中央のインジケーター（ホバー時のヒント。非展開時は1pxのラインとして少しだけ見える）
             RoundedRectangle(cornerRadius: 1)
-                .fill(Color.secondary.opacity(0.3))
+                .fill(Color.secondary.opacity(windowManager.isStagedWindowsBarExpanded ? 0.3 : 0.1))
                 .frame(width: 40, height: 2)
-                .padding(.bottom, 2)
+                .padding(.bottom, 1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 3)
+                .shadow(color: .black.opacity(windowManager.isStagedWindowsBarExpanded ? 0.2 : 0.0), radius: 8, x: 0, y: 3)
         )
+        .opacity(windowManager.isStagedWindowsBarExpanded ? 1.0 : 0.05) // 非ホバー時はほぼ完全に透明にする
+        .animation(.easeInOut(duration: 0.18), value: windowManager.isStagedWindowsBarExpanded)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 

@@ -28,6 +28,9 @@ final class WindowManager: ObservableObject {
     /// Focus Mode で現在フォーカス中のウィンドウ ID（UI 参照用）
     @Published private(set) var focusedWindowID: String?
 
+    /// 上部格納バーが展開されているかどうか
+    @Published var isStagedWindowsBarExpanded: Bool = false
+
     // MARK: - Internal Components
 
     private var tilingController: TilingModeController?
