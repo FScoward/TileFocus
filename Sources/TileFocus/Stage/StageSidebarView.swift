@@ -88,6 +88,7 @@ final class StageTopBarController: NSObject {
             effectView.blendingMode = .behindWindow // ウィンドウの背後をブレンド
             effectView.material = .hudWindow // HUD風のクールなマテリアル
             effectView.state = .active
+            effectView.alphaValue = 0.85 // 本格的な透過効果のためにガラスのアルファを少し下げる
             
             // 角丸を適用
             effectView.wantsLayer = true
@@ -428,9 +429,18 @@ struct StageTopBarView: View {
                             }
                         }
                         
-                        // 最前面のガラスプレート
+                        // 最前面のガラスプレート (NSVisualEffectView の上にあるため、極めて薄いホワイトのハイライトグラデーションにして二重ぼかしを防ぐ)
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(.ultraThinMaterial)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.04),
+                                        Color.white.opacity(0.01)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
                     }
                     .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 4)
                     .overlay(
