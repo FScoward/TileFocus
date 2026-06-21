@@ -251,11 +251,10 @@ struct FocusLayout: Layout {
             }
             
             let mainW = (totalW - inner * 2) / 3
-            return [
-                CGRect(x: startX, y: startY, width: mainW, height: totalH),
-                CGRect(x: startX + mainW + inner, y: startY, width: mainW, height: totalH),
-                CGRect(x: startX + (mainW + inner) * 2, y: startY, width: mainW, height: totalH)
-            ]
+            let leftFrame = CGRect(x: startX, y: startY, width: mainW, height: totalH)
+            let centerFrame = CGRect(x: startX + mainW + inner, y: startY, width: mainW, height: totalH)
+            let rightFrame = CGRect(x: startX + (mainW + inner) * 2, y: startY, width: mainW, height: totalH)
+            return [centerFrame, leftFrame, rightFrame]
         }
     }
 }
