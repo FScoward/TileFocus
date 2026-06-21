@@ -23,6 +23,9 @@ struct FocusLayout: Layout {
     /// これを下回る場合はウィンドウを表示しない（truncate）
     var minSideWindowHeight: CGFloat = 160
 
+    /// フォーカスのスタイル（中央メイン、左メイン、右メイン）
+    var style: FocusStyle = .centered
+
     func calculateFrames(windowCount: Int, screenFrame: CGRect) -> [CGRect] {
         guard windowCount > 0 else { return [] }
 
@@ -39,62 +42,109 @@ struct FocusLayout: Layout {
         }
 
         let totalSideCount = windowCount - 1
-        
-        // 左右のサイドバーに割り振るウィンドウ数を計算
-        // i = 1, 3, 5... (奇数番目のサブ) は左、i = 2, 4, 6... (偶数番目のサブ) は右
-        var leftCount = 0
-        var rightCount = 0
-        for i in 1...totalSideCount {
-            if i % 2 == 1 {
-                leftCount += 1
-            } else {
-                rightCount += 1
-            }
-        }
 
-        // メインウィンドウとサイドバーの幅・位置
-        let mainW = (totalW - inner * 2) * mainWidthRatio
-        let remainingW = (totalW - inner * 2) - mainW
-        let sideW = remainingW / 2
-
-        let leftX = startX
-        let centerX = startX + sideW + inner
-        let rightX = centerX + mainW + inner
-
-        let mainFrame = CGRect(x: centerX, y: startY, width: mainW, height: totalH)
-
-        // 左右の最大表示数を計算
-        let maxSideCount = max(1, Int((totalH + inner) / (minSideWindowHeight + inner)))
-        
-        let leftDisplayCount = min(leftCount, maxSideCount)
-        let rightDisplayCount = min(rightCount, maxSideCount)
-
-        let leftH = leftDisplayCount > 0 ? (totalH - inner * CGFloat(leftDisplayCount - 1)) / CGFloat(leftDisplayCount) : 0
-        let rightH = rightDisplayCount > 0 ? (totalH - inner * CGFloat(rightDisplayCount - 1)) / CGFloat(rightDisplayCount) : 0
-
-        var frames = [mainFrame]
-        
-        var currentLeftIdx = 0
-        var currentRightIdx = 0
-        
-        for i in 1...totalSideCount {
-            if i % 2 == 1 {
-                // 左サイドバー
-                if currentLeftIdx < leftDisplayCount {
-                    let sideY = startY + CGFloat(currentLeftIdx) * (leftH + inner)
-                    frames.append(CGRect(x: leftX, y: sideY, width: sideW, height: leftH))
-                    currentLeftIdx += 1
-                }
-            } else {
-                // 右サイドバー
-                if currentRightIdx < rightDisplayCount {
-                    let sideY = startY + CGFloat(currentRightIdx) * (rightH + inner)
-                    frames.append(CGRect(x: rightX, y: sideY, width: sideW, height: rightH))
-                    currentRightIdx += 1
+        switch style {
+        case .centered:
+            // 従来の左右配置（Centered Focus）
+            var leftCount = 0
+            var rightCount = 0
+            for i in 1...totalSideCount {
+                if i % 2 == 1 {
+                    leftCount += 1
+                } else {
+                    rightCount += 1
                 }
             }
-        }
 
-        return frames
+            let mainW = (totalW - inner * 2) * mainWidthRatio
+            let remainingW = (totalW - inner * 2) - mainW
+            let sideW = remainingW / 2
+
+            let leftX = startX
+            let centerX = startX + sideW + inner
+            let rightX = centerX + mainW + inner
+
+            let mainFrame = CGRect(x: centerX, y: startY, width: mainW, height: totalH)
+
+            let maxSideCount = max(1, Int((totalH + inner) / (minSideWindowHeight + inner)))
+            let leftDisplayCount = min(leftCount, maxSideCount)
+            let rightDisplayCount = min(rightCount, maxSideCount)
+
+            let leftH = leftDisplayCount > 0 ? (totalH - inner * CGFloat(leftDisplayCount - 1)) / CGFloat(leftDisplayCount) : 0
+            let rightH = rightDisplayCount > 0 ? (totalH - inner * CGFloat(rightDisplayCount - 1)) / CGFloat(rightDisplayCount) : 0
+
+            var frames = [mainFrame]
+            var currentLeftIdx = 0
+            var currentRightIdx = 0
+
+            for i in 1...totalSideCount {
+                if i % 2 == 1 {
+                    if currentLeftIdx < leftDisplayCount {
+                        let sideY = startY + CGFloat(currentLeftIdx) * (leftH + inner)
+                        frames.append(CGRect(x: leftX, y: sideY, width: sideW, height: leftH))
+                        currentLeftIdx += 1
+                    } else {
+                        frames.append(CGRect(x: -4000, y: startY + CGFloat(i) * 10, width: 200, height: 200))
+                    }
+                } else {
+                    if currentRightIdx < rightDisplayCount {
+                        let sideY = startY + CGFloat(currentRightIdx) * (rightH + inner)
+                        frames.append(CGRect(x: rightX, y: sideY, width: sideW, height: rightH))
+                        currentRightIdx += 1
+                    } else {
+                        frames.append(CGRect(x: -4000, y: startY + CGFloat(i) * 10, width: 200, height: 200))
+                    }
+                }
+            }
+            return frames
+
+        case .leftMain:
+            // 左メイン、右サブ
+            let mainW = (totalW - inner) * mainWidthRatio
+            let sideW = (totalW - inner) - mainW
+
+            let mainFrame = CGRect(x: startX, y: startY, width: mainW, height: totalH)
+            let sideX = startX + mainW + inner
+
+            let maxSideCount = max(1, Int((totalH + inner) / (minSideWindowHeight + inner)))
+            let sideDisplayCount = min(totalSideCount, maxSideCount)
+            let sideH = sideDisplayCount > 0 ? (totalH - inner * CGFloat(sideDisplayCount - 1)) / CGFloat(sideDisplayCount) : 0
+
+            var frames = [mainFrame]
+            for i in 0..<totalSideCount {
+                if i < sideDisplayCount {
+                    let sideY = startY + CGFloat(i) * (sideH + inner)
+                    frames.append(CGRect(x: sideX, y: sideY, width: sideW, height: sideH))
+                } else {
+                    frames.append(CGRect(x: -4000, y: startY + CGFloat(i) * 10, width: 200, height: 200))
+                }
+            }
+            return frames
+
+        case .rightMain:
+            // 右メイン、左サブ
+            let mainW = (totalW - inner) * mainWidthRatio
+            let sideW = (totalW - inner) - mainW
+
+            let sideX = startX
+            let mainX = startX + sideW + inner
+
+            let mainFrame = CGRect(x: mainX, y: startY, width: mainW, height: totalH)
+
+            let maxSideCount = max(1, Int((totalH + inner) / (minSideWindowHeight + inner)))
+            let sideDisplayCount = min(totalSideCount, maxSideCount)
+            let sideH = sideDisplayCount > 0 ? (totalH - inner * CGFloat(sideDisplayCount - 1)) / CGFloat(sideDisplayCount) : 0
+
+            var frames = [mainFrame]
+            for i in 0..<totalSideCount {
+                if i < sideDisplayCount {
+                    let sideY = startY + CGFloat(i) * (sideH + inner)
+                    frames.append(CGRect(x: sideX, y: sideY, width: sideW, height: sideH))
+                } else {
+                    frames.append(CGRect(x: -4000, y: startY + CGFloat(i) * 10, width: 200, height: 200))
+                }
+            }
+            return frames
+        }
     }
 }

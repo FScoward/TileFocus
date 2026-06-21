@@ -56,3 +56,30 @@ enum AppMode: String, CaseIterable, Identifiable {
         }
     }
 }
+
+// MARK: - FocusStyle
+
+/// Focus Mode におけるメインウィンドウとサブウィンドウの配置スタイル
+enum FocusStyle: String, CaseIterable, Identifiable {
+    case centered
+    case leftMain
+    case rightMain
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .centered: return "中央メイン"
+        case .leftMain: return "左メイン"
+        case .rightMain: return "右メイン"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .centered: return "rectangle.center.inset.filled"
+        case .leftMain: return "square.leadingthird.inset.filled"
+        case .rightMain: return "square.trailingthird.inset.filled"
+        }
+    }
+}

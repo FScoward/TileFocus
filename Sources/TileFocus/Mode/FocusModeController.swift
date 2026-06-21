@@ -288,8 +288,11 @@ final class FocusModeController {
         // 配置指示した理想サイズを記録（次回のリサイズ制限チェック用）
         var appliedIdealSizes: [(id: String, size: CGSize)] = []
 
-        let gap = layout.gap
-        let minSideWindowHeight = layout.minSideWindowHeight
+        let currentStyle = windowManager.focusStyle
+        var activeLayout = layout
+        activeLayout.style = currentStyle
+        let gap = activeLayout.gap
+        let minSideWindowHeight = activeLayout.minSideWindowHeight
 
         for (si, group) in screenGroups.enumerated() {
             guard !group.isEmpty else { continue }
@@ -297,9 +300,9 @@ final class FocusModeController {
             let screenAXFrame = screenManager.visibleFrameInAX(for: screen)
             Log.info(Self.tag, "  Screen[\(si)] \(group.count)枚 AXFrame=\(screenAXFrame)")
 
-            let idealFrames = layout.calculateFrames(windowCount: group.count, screenFrame: screenAXFrame)
+            let idealFrames = activeLayout.calculateFrames(windowCount: group.count, screenFrame: screenAXFrame)
 
-            // 左右サイドバーの配置 Y 座標の追跡
+            // 左右サイドバー of 配置 Y 座標の追跡
             var currentLeftY = screenAXFrame.minY + gap.outer
             var currentRightY = screenAXFrame.minY + gap.outer
 
@@ -346,7 +349,16 @@ final class FocusModeController {
                         minH = idealFrame.height
                     }
                     
-                    let isLeft = (i % 2 == 1)
+                    let isLeft: Bool
+                    switch currentStyle {
+                    case .centered:
+                        isLeft = (i % 2 == 1)
+                    case .leftMain:
+                        isLeft = false
+                    case .rightMain:
+                        isLeft = true
+                    }
+                    
                     let currentY = isLeft ? currentLeftY : currentRightY
                     
                     // 残り高さの計算

@@ -31,6 +31,15 @@ final class WindowManager: ObservableObject {
     /// 上部格納バーが展開されているかどうか
     @Published var isStagedWindowsBarExpanded: Bool = false
 
+    /// Focus Mode の現在のスタイル（中央・左・右メイン）
+    @Published var focusStyle: FocusStyle = .centered {
+        didSet {
+            if currentMode == .focus {
+                focusController?.scheduleLayoutUpdate()
+            }
+        }
+    }
+
     // MARK: - Internal Components
 
     private var tilingController: TilingModeController?

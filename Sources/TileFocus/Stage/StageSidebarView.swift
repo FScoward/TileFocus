@@ -138,7 +138,11 @@ final class StageTopBarController: NSObject {
             // 4列グリッドの行数
             let rows = max(1, Int(ceil(Double(count) / 4.0)))
             // 1行あたり 30px + 行間 6px、上下パディング計 20px
-            targetHeight = CGFloat(rows * 30 + (rows - 1) * 6 + 20)
+            let gridHeight = CGFloat(rows * 30 + (rows - 1) * 6 + 20)
+            
+            // Focus Mode のときはレイアウト切り替えツールバーの高さ（34px）を追加
+            let toolbarHeight: CGFloat = (windowManager.currentMode == .focus) ? 34 : 0
+            targetHeight = gridHeight + toolbarHeight
         }
         
         let targetY = collapsed ? (screenFrame.maxY - visibleOffset) : (screenFrame.maxY - targetHeight)
@@ -189,6 +193,48 @@ struct StageTopBarView: View {
             // 展開時のみコンテンツを表示
             if windowManager.isStagedWindowsBarExpanded {
                 VStack(spacing: 0) {
+                    // Focus Mode の場合のみレイアウトスタイル切り替えツールバーを表示
+                    if windowManager.currentMode == .focus {
+                        HStack(spacing: 8) {
+                            Text("レイアウト:")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.secondary)
+                            
+                            Spacer()
+                            
+                            ForEach(FocusStyle.allCases) { style in
+                                Button {
+                                    windowManager.focusStyle = style
+                                } label: {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: style.iconName)
+                                            .font(.system(size: 9))
+                                        Text(style.displayName)
+                                            .font(.system(size: 10))
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .fill(windowManager.focusStyle == style ? Color.purple.opacity(0.15) : Color.clear)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(windowManager.focusStyle == style ? Color.purple.opacity(0.3) : Color.clear, lineWidth: 0.5)
+                                    )
+                                    .foregroundStyle(windowManager.focusStyle == style ? Color.purple : Color.primary)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        
+                        Divider()
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 5)
+                    }
+
                     if allWindowsForScreen.isEmpty {
                         Text("起動中のウィンドウはありません")
                             .font(.caption)
