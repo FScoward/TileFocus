@@ -531,8 +531,7 @@ struct WindowDropDelegate: DropDelegate {
 
         if fromIndex != toIndex {
             withAnimation(.easeInOut(duration: 0.2)) {
-                tempWindows.remove(at: fromIndex)
-                tempWindows.insert(draggedItem, at: toIndex)
+                tempWindows.swapAt(fromIndex, toIndex)
             }
         }
     }
