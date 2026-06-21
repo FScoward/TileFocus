@@ -369,11 +369,6 @@ struct StageTopBarView: View {
                 overlayManager.hideOverlays()
             }
         }
-        .onChange(of: tempWindows) { newValue in
-            if draggedWindow != nil {
-                overlayManager.showOverlays(for: newValue, screen: screen, focusedID: windowManager.focusedWindowID)
-            }
-        }
         .onChange(of: windowManager.isStagedWindowsBarExpanded) { expanded in
             if !expanded {
                 overlayManager.hideOverlays()
