@@ -28,6 +28,9 @@ final class WindowManager: ObservableObject {
     /// Focus Mode で現在フォーカス中のウィンドウ ID（UI 参照用）
     @Published private(set) var focusedWindowID: String?
 
+    /// Focus Mode における現在のマスター（メイン）ウィンドウ ID
+    @Published private(set) var masterWindowID: String?
+
     /// ユーザーがドラッグ＆ドロップで並べ替えたウィンドウIDの順序
     @Published var customWindowOrder: [String] = [] {
         didSet {
@@ -251,7 +254,11 @@ final class WindowManager: ObservableObject {
 
     /// 現在のマスターウィンドウの情報を返す
     var masterWindow: ManagedWindow? {
-        managedWindows.first { $0.state != .staged }
+        if currentMode == .focus {
+            return (managedWindows + stagedWindows).first { $0.id == masterWindowID }
+        } else {
+            return managedWindows.first { $0.state != .staged }
+        }
     }
 
     /// Focus Mode でフォーカスウィンドウを切り替える（MenuBar などから呼ばれる）
@@ -398,6 +405,11 @@ final class WindowManager: ObservableObject {
     /// Focus Mode のフォーカスウィンドウ ID を更新する（FocusModeController から呼ばれる）
     func updateFocusedWindowID(_ id: String?) {
         focusedWindowID = id
+    }
+
+    /// Focus Mode のマスターウィンドウ ID を更新する（FocusModeController から呼ばれる）
+    func updateMasterWindowID(_ id: String?) {
+        masterWindowID = id
     }
 
     /// ウィンドウのリサイズ成否状態を更新する

@@ -85,7 +85,7 @@ final class FocusModeController {
         }
 
         focusedWindowID = nil
-        masterWindowID = nil
+        setMasterWindowID(nil)
     }
 
     // MARK: - Focus Control
@@ -164,7 +164,7 @@ final class FocusModeController {
             return
         }
         Log.info(Self.tag, "  マスター切り替え: \(masterWindowID ?? "nil") → \(windowID)")
-        masterWindowID = windowID
+        setMasterWindowID(windowID)
         setFocusedWindowID(windowID)
         applyLayout()
     }
@@ -197,12 +197,12 @@ final class FocusModeController {
             if let windowManager {
                 let remaining = windowManager.managedWindows.filter { $0.id != id && $0.state != .staged }
                 if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
-                    masterWindowID = nextMaster.id
+                    setMasterWindowID(nextMaster.id)
                 } else {
-                    masterWindowID = nil
+                    setMasterWindowID(nil)
                 }
             } else {
-                masterWindowID = nil
+                setMasterWindowID(nil)
             }
             Log.info(Self.tag, "  マスターウィンドウが閉じられたため、新しいマスターに設定: \(masterWindowID ?? "nil")")
         }
@@ -217,7 +217,16 @@ final class FocusModeController {
         windowManager?.updateFocusedWindowID(id)
         if let id {
             updateFocusHistory(with: id)
+            if masterWindowID == nil {
+                setMasterWindowID(id)
+            }
         }
+    }
+
+    /// masterWindowID を更新し WindowManager の @Published 値にも反映させる
+    private func setMasterWindowID(_ id: String?) {
+        masterWindowID = id
+        windowManager?.updateMasterWindowID(id)
     }
 
     private func updateFocusHistory(with id: String) {
@@ -300,8 +309,8 @@ final class FocusModeController {
             
             // group を ホバーバー (allWindowsForScreen) と完全に同じロジックでソート
             var sortedGroup = group
-            if let focusedID = focusedWindowID,
-               let masterIndex = sortedGroup.firstIndex(where: { $0.id == focusedID }) {
+            if let masterID = masterWindowID,
+               let masterIndex = sortedGroup.firstIndex(where: { $0.id == masterID }) {
                 let master = sortedGroup.remove(at: masterIndex)
                 let sortedOthers = sortedGroup.sorted { w1, w2 in
                     let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)

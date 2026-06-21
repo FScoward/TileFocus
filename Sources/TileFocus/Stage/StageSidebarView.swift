@@ -189,7 +189,7 @@ struct StageTopBarView: View {
 
 
     /// このスクリーンに所属するすべてのウィンドウ（表示中 + 格納中）
-    /// 王冠（フォーカスウィンドウ）を常に先頭にし、残りはユーザー定義のカスタムオーダー（無ければアプリ名・タイトル順）でソートします
+    /// 王冠（マスターウィンドウ）を常に先頭にし、残りはユーザー定義のカスタムオーダー（無ければアプリ名・タイトル順）でソートします
     private var allWindowsForScreen: [ManagedWindow] {
         let screenManager = ScreenManager()
         let all = windowManager.managedWindows + windowManager.stagedWindows
@@ -200,8 +200,8 @@ struct StageTopBarView: View {
         }
         
         var result = filtered
-        if let focusedID = windowManager.focusedWindowID,
-           let masterIndex = result.firstIndex(where: { $0.id == focusedID }) {
+        if let masterID = windowManager.masterWindow?.id,
+           let masterIndex = result.firstIndex(where: { $0.id == masterID }) {
             let master = result.remove(at: masterIndex)
             let sortedOthers = result.sorted { w1, w2 in
                 let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
@@ -384,8 +384,8 @@ struct StageTopBarView: View {
     @ViewBuilder
     private func windowItem(_ window: ManagedWindow) -> some View {
         let isStaged = windowManager.stagedWindows.contains(where: { $0.id == window.id })
-        // 現在フォーカス（メイン）されているかどうか
-        let isMaster = windowManager.focusedWindowID == window.id
+        // 現在マスター（メイン）に設定されているかどうか
+        let isMaster = windowManager.masterWindow?.id == window.id
         let isDragging = draggedWindow?.id == window.id
 
         
@@ -521,10 +521,11 @@ struct WindowDropDelegate: DropDelegate {
             return
         }
 
-        // 王冠（フォーカスウィンドウ）が関わる並べ替えは無視する（常に1番に固定）
+        // 王冠（マスターウィンドウ）が関わる並べ替えは無視する（常に1番に固定）
         let fromWindow = tempWindows[fromIndex]
         let toWindow = tempWindows[toIndex]
-        guard fromWindow.id != windowManager.focusedWindowID && toWindow.id != windowManager.focusedWindowID else {
+        let masterID = windowManager.masterWindow?.id
+        guard fromWindow.id != masterID && toWindow.id != masterID else {
             return
         }
 
