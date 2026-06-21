@@ -28,8 +28,6 @@ class StageTopBarPanel: NSPanel {
         return frameRect
     }
 
-
-
     private func setupTrackingArea() {
         let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
         let area = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
@@ -66,8 +64,6 @@ final class StageTopBarController: NSObject {
             let initialX = screenFrame.minX + (screenFrame.width - barWidth) / 2
             let initialY = screenFrame.maxY - visibleOffset
             let panelFrame = CGRect(x: initialX, y: initialY, width: barWidth, height: barHeight)
-            
-            Log.info("StageTopBarController", "画面 '\(screen.localizedName)': visibleFrame=\(screenFrame), panelFrame=\(panelFrame)")
             
             let panel = StageTopBarPanel(contentRect: panelFrame)
             
@@ -138,7 +134,7 @@ struct StageTopBarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 展開時のみコンテンツを表示
+            // 展開時のみ実体を表示する
             if windowManager.isStagedWindowsBarExpanded {
                 HStack(spacing: 0) {
                     if stagedWindowsForScreen.isEmpty {
@@ -160,29 +156,30 @@ struct StageTopBarView: View {
                     }
                 }
                 .frame(height: 58)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(.ultraThinMaterial)
+                        .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 3)
+                )
+                .transition(.opacity) // 滑らかな表示切り替え
             } else {
-                // 非展開時はダミーの透明な領域を置いてヒットテストを可能にする
-                Color.black.opacity(0.01)
+                // 非展開時は高さを維持するためのダミー領域（透明だがヒットテスト可能）
+                Spacer()
                     .frame(height: 58)
             }
             
             // 下部中央のインジケーター（ホバー時のヒント。非展開時も極小のガイド線として見える）
             RoundedRectangle(cornerRadius: 1)
-                .fill(Color.secondary.opacity(windowManager.isStagedWindowsBarExpanded ? 0.3 : 0.25))
+                .fill(Color.secondary.opacity(windowManager.isStagedWindowsBarExpanded ? 0.3 : 0.18))
                 .frame(width: 40, height: 2)
                 .padding(.bottom, 1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(windowManager.isStagedWindowsBarExpanded ? 0.25 : 0.0), radius: 8, x: 0, y: 3)
-        )
-        // 非展開時は透明度を 0.05 にし、わずかにガイド線（インジケーター）が見え、かつヒットテストが確実に効くようにする
-        .opacity(windowManager.isStagedWindowsBarExpanded ? 1.0 : 0.05)
+        // 重要: 透明度を低くして透過されるのを防ぐため、ビュー全体の背景に超微薄の透明色を置き、全体の不透明度は 1.0 に維持する
+        .background(Color.black.opacity(0.001))
+        .contentShape(Rectangle()) // ヒットテストをビュー全体で有効にする
         .animation(.easeInOut(duration: 0.18), value: windowManager.isStagedWindowsBarExpanded)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .contentShape(Rectangle()) // ヒットテストをビュー全体で有効にする
     }
 
     @ViewBuilder
