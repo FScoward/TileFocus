@@ -57,8 +57,8 @@ class StageTopBarPanel: NSPanel {
 final class StageTopBarController: NSObject {
     private var panels: [NSScreen: StageTopBarPanel] = [:]
     
-    private let barWidth: CGFloat = 660 // ボタンが大きくなったため幅を少し広げる (600 -> 660)
-    private let barHeight: CGFloat = 64
+    private let barWidth: CGFloat = 620
+    private let collapsedHeight: CGFloat = 4
     private let visibleOffset: CGFloat = 8 // 隠れている時に画面内に露出させるピクセル数（ホバー検知用）
     
     @MainActor
@@ -71,12 +71,13 @@ final class StageTopBarController: NSObject {
             // 初期状態（隠れている状態: 下端が screenFrame.maxY - visibleOffset になる位置）
             let initialX = screenFrame.minX + (screenFrame.width - barWidth) / 2
             let initialY = screenFrame.maxY - visibleOffset
-            let panelFrame = CGRect(x: initialX, y: initialY, width: barWidth, height: barHeight)
+            // 初期高さは collapsedHeight(4px)
+            let panelFrame = CGRect(x: initialX, y: initialY, width: barWidth, height: collapsedHeight)
             
             let panel = StageTopBarPanel(contentRect: panelFrame)
             
             // コンテナビューの作成
-            let container = StageTopBarContainerView(frame: CGRect(x: 0, y: 0, width: barWidth, height: barHeight))
+            let container = StageTopBarContainerView(frame: CGRect(x: 0, y: 0, width: barWidth, height: collapsedHeight))
             container.autoresizingMask = [.width, .height]
             
             let topBarView = StageTopBarView(screen: screen)
@@ -90,17 +91,17 @@ final class StageTopBarController: NSObject {
             
             // ホバーイベントの紐付け
             container.onMouseEnter = { [weak self, weak panel, weak windowManager] in
-                guard let self, let panel else { return }
+                guard let self, let panel, let windowManager else { return }
                 Log.info("StageTopBarController", "mouseEntered 検知")
-                windowManager?.isStagedWindowsBarExpanded = true
-                self.updatePanelCollapseState(collapsed: false, panel: panel, screen: screen)
+                windowManager.isStagedWindowsBarExpanded = true
+                self.updatePanelCollapseState(collapsed: false, panel: panel, screen: screen, windowManager: windowManager)
             }
             
             container.onMouseExit = { [weak self, weak panel, weak windowManager] in
-                guard let self, let panel else { return }
+                guard let self, let panel, let windowManager else { return }
                 Log.info("StageTopBarController", "mouseExited 検知")
-                windowManager?.isStagedWindowsBarExpanded = false
-                self.updatePanelCollapseState(collapsed: true, panel: panel, screen: screen)
+                windowManager.isStagedWindowsBarExpanded = false
+                self.updatePanelCollapseState(collapsed: true, panel: panel, screen: screen, windowManager: windowManager)
             }
             
             Log.info("StageTopBarController", "画面 '\(screen.localizedName)': visibleFrame=\(screenFrame), panelFrame=\(panelFrame)")
@@ -118,15 +119,30 @@ final class StageTopBarController: NSObject {
     }
     
     @MainActor
-    private func updatePanelCollapseState(collapsed: Bool, panel: StageTopBarPanel, screen: NSScreen) {
+    private func updatePanelCollapseState(collapsed: Bool, panel: StageTopBarPanel, screen: NSScreen, windowManager: WindowManager) {
         let screenFrame = screen.visibleFrame
         let x = screenFrame.minX + (screenFrame.width - barWidth) / 2
         
-        // 展開時はメニューバーの直下（y = maxY - barHeight）
-        // 格納時は下端が少しだけ露出（y = maxY - visibleOffset）
-        let targetY = collapsed ? (screenFrame.maxY - visibleOffset) : (screenFrame.maxY - barHeight)
+        let targetHeight: CGFloat
+        if collapsed {
+            targetHeight = collapsedHeight
+        } else {
+            // そのスクリーンに属するウィンドウ数を動的に取得して高さを計算
+            let screenManager = ScreenManager()
+            let all = windowManager.managedWindows + windowManager.stagedWindows
+            let count = all.filter { window in
+                let frame = window.frameBeforeStaging ?? window.frame
+                return screenManager.screen(containingAXFrame: frame) == screen
+            }.count
+            
+            // 4列グリッドの行数
+            let rows = max(1, Int(ceil(Double(count) / 4.0)))
+            // 1行あたり 30px + 行間 6px、上下パディング計 20px
+            targetHeight = CGFloat(rows * 30 + (rows - 1) * 6 + 20)
+        }
         
-        let targetFrame = CGRect(x: x, y: targetY, width: barWidth, height: barHeight)
+        let targetY = collapsed ? (screenFrame.maxY - visibleOffset) : (screenFrame.maxY - targetHeight)
+        let targetFrame = CGRect(x: x, y: targetY, width: barWidth, height: targetHeight)
         
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
@@ -160,30 +176,34 @@ struct StageTopBarView: View {
         }
     }
 
+    // 1行4列のグリッドレイアウト
+    private let columns = [
+        GridItem(.fixed(140), spacing: 6),
+        GridItem(.fixed(140), spacing: 6),
+        GridItem(.fixed(140), spacing: 6),
+        GridItem(.fixed(140), spacing: 6)
+    ]
+
     var body: some View {
         VStack(spacing: 0) {
             // 展開時のみコンテンツを表示
             if windowManager.isStagedWindowsBarExpanded {
-                HStack(spacing: 0) {
+                VStack(spacing: 0) {
                     if allWindowsForScreen.isEmpty {
-                        Spacer()
                         Text("起動中のウィンドウはありません")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Spacer()
+                            .frame(height: 30)
                     } else {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(allWindowsForScreen) { window in
-                                    windowItem(window)
-                                }
+                        LazyVGrid(columns: columns, spacing: 6) {
+                            ForEach(allWindowsForScreen) { window in
+                                windowItem(window)
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
                         }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 10)
                     }
                 }
-                .frame(height: 58)
                 .background(
                     RoundedRectangle(cornerRadius: 12)
                         .fill(.ultraThinMaterial)
@@ -191,9 +211,7 @@ struct StageTopBarView: View {
                 )
                 .transition(.opacity) // 滑らかな表示切り替え
             } else {
-                // 非展開時は高さを維持するためのダミー領域（透明だがヒットテスト可能）
                 Spacer()
-                    .frame(height: 58)
             }
             
             // 下部中央のインジゲーター（ホバー時のヒント。非展開時も極小のガイド線として見える）
@@ -203,7 +221,6 @@ struct StageTopBarView: View {
                 .padding(.bottom, 1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // 普段は完全に透明（ヒットテスト用のアルファ）
         .background(Color.black.opacity(0.001))
         .contentShape(Rectangle())
         .animation(.easeInOut(duration: 0.18), value: windowManager.isStagedWindowsBarExpanded)
@@ -216,49 +233,40 @@ struct StageTopBarView: View {
         // 現在フォーカス（メイン）されているかどうか
         let isMaster = windowManager.focusedWindowID == window.id
         
-        HStack(spacing: 4) {
+        HStack(spacing: 2) {
             // 1. 左側: 表示/非表示トグルボタン
             Button {
                 if isStaged {
                     windowManager.unstageWindow(window)
                 } else {
-                    // もし現在メインのウィンドウを非表示にする場合、かつ他のウィンドウがあれば、
-                    // メインが消失するので自動的に別のメインが選ばれるようにする
                     windowManager.stageWindow(window)
                 }
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 5)
+                        RoundedRectangle(cornerRadius: 4)
                             .fill(isStaged ? Color.secondary.opacity(0.15) : Color.accentColor.opacity(0.15))
                         Text(String(window.appName.prefix(1)))
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 9, weight: .bold))
                             .foregroundStyle(isStaged ? Color.secondary : Color.accentColor)
                     }
-                    .frame(width: 20, height: 20)
+                    .frame(width: 16, height: 16)
 
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(window.appName)
-                            .font(.system(size: 11, weight: isStaged ? .regular : .semibold))
-                            .foregroundStyle(isStaged ? .secondary : .primary)
-                            .lineLimit(1)
-                        if !window.title.isEmpty && window.title != window.appName {
-                            Text(window.title)
-                                .font(.system(size: 8))
-                                .foregroundStyle(isStaged ? .tertiary : .secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                    .frame(width: 80, alignment: .leading)
+                    Text(window.appName)
+                        .font(.system(size: 10, weight: isStaged ? .regular : .semibold))
+                        .foregroundStyle(isStaged ? .secondary : .primary)
+                        .lineLimit(1)
+                    
+                    Spacer(minLength: 0)
                     
                     Image(systemName: isStaged ? "eye.slash" : "eye.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(isStaged ? Color.secondary.opacity(0.5) : Color.accentColor)
+                        .font(.system(size: 8))
+                        .foregroundStyle(isStaged ? Color.secondary.opacity(0.4) : Color.accentColor)
                 }
-                .padding(.horizontal, 6)
+                .padding(.horizontal, 5)
                 .padding(.vertical, 4)
                 .background(
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: 4)
                         .fill(
                             hoveredWindowID == window.id
                             ? (isStaged ? Color.secondary.opacity(0.12) : Color.accentColor.opacity(0.15))
@@ -266,8 +274,8 @@ struct StageTopBarView: View {
                         )
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(isStaged ? Color.clear : Color.accentColor.opacity(0.25), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(isStaged ? Color.clear : Color.accentColor.opacity(0.2), lineWidth: 0.5)
                 )
             }
             .buttonStyle(.plain)
@@ -278,32 +286,31 @@ struct StageTopBarView: View {
             // 2. 右側: メイン（マスター）に設定する王冠ボタン
             Button {
                 if isStaged {
-                    // 格納されている場合は、まず画面上に復帰させてからメインにする
                     windowManager.unstageWindow(window)
                 }
                 windowManager.switchFocusedWindow(to: window.id)
             } label: {
                 Image(systemName: isMaster ? "crown.fill" : "crown")
-                    .font(.system(size: 11))
+                    .font(.system(size: 9))
                     .foregroundStyle(isMaster ? Color.yellow : Color.secondary.opacity(0.4))
-                    .frame(width: 22, height: 22)
+                    .frame(width: 18, height: 18)
                     .background(
-                        RoundedRectangle(cornerRadius: 4)
+                        RoundedRectangle(cornerRadius: 3)
                             .fill(isMaster ? Color.yellow.opacity(0.15) : Color.clear)
                     )
             }
             .buttonStyle(.plain)
-            .help("このウィンドウをメインに設定")
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, 3)
         .padding(.vertical, 2)
         .background(
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 6)
                 .fill(isMaster ? Color.yellow.opacity(0.06) : Color.clear)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(isMaster ? Color.yellow.opacity(0.3) : Color.clear, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(isMaster ? Color.yellow.opacity(0.25) : Color.clear, lineWidth: 0.5)
         )
+        .frame(width: 140) // グリッドの各アイテム幅を140pxに固定
     }
 }
