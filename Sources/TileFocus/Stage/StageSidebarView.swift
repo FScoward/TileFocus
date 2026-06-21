@@ -56,6 +56,7 @@ class StageTopBarPanel: NSPanel {
 
 final class StageTopBarController: NSObject {
     private var panels: [NSScreen: StageTopBarPanel] = [:]
+    private var collapseWorkItems: [NSScreen: DispatchWorkItem] = [:]
     
     private let barWidth: CGFloat = 620
     private let collapsedHeight: CGFloat = 4
@@ -93,6 +94,11 @@ final class StageTopBarController: NSObject {
             container.onMouseEnter = { [weak self, weak panel, weak windowManager] in
                 guard let self, let panel, let windowManager else { return }
                 Log.info("StageTopBarController", "mouseEntered 検知")
+                
+                // 閉じる予定のタスクがあれば即座にキャンセルして開きっぱなしにする
+                self.collapseWorkItems[screen]?.cancel()
+                self.collapseWorkItems[screen] = nil
+                
                 windowManager.isStagedWindowsBarExpanded = true
                 self.updatePanelCollapseState(collapsed: false, panel: panel, screen: screen, windowManager: windowManager)
             }
@@ -100,8 +106,17 @@ final class StageTopBarController: NSObject {
             container.onMouseExit = { [weak self, weak panel, weak windowManager] in
                 guard let self, let panel, let windowManager else { return }
                 Log.info("StageTopBarController", "mouseExited 検知")
-                windowManager.isStagedWindowsBarExpanded = false
-                self.updatePanelCollapseState(collapsed: true, panel: panel, screen: screen, windowManager: windowManager)
+                
+                // 誤検知やチャタリングを防ぐため、閉じる処理に 0.2 秒の遅延バッファを持たせる
+                self.collapseWorkItems[screen]?.cancel()
+                let workItem = DispatchWorkItem { [weak self, weak panel, weak windowManager] in
+                    guard let self, let panel, let windowManager else { return }
+                    Log.info("StageTopBarController", "mouseExited 確定、バーを閉じます")
+                    windowManager.isStagedWindowsBarExpanded = false
+                    self.updatePanelCollapseState(collapsed: true, panel: panel, screen: screen, windowManager: windowManager)
+                }
+                self.collapseWorkItems[screen] = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: workItem)
             }
             
             Log.info("StageTopBarController", "画面 '\(screen.localizedName)': visibleFrame=\(screenFrame), panelFrame=\(panelFrame)")
@@ -112,6 +127,11 @@ final class StageTopBarController: NSObject {
     }
     
     func hide() {
+        for workItem in collapseWorkItems.values {
+            workItem.cancel()
+        }
+        collapseWorkItems.removeAll()
+
         for panel in panels.values {
             panel.orderOut(nil)
         }
