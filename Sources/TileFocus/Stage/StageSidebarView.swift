@@ -143,12 +143,20 @@ struct StageTopBarView: View {
     let screen: NSScreen
     @State private var hoveredWindowID: String?
 
-    private var stagedWindowsForScreen: [ManagedWindow] {
+    /// このスクリーンに所属するすべてのウィンドウ（表示中 + 格納中）
+    /// 位置を固定するため、アプリ名・タイトル順にソートします
+    private var allWindowsForScreen: [ManagedWindow] {
         let screenManager = ScreenManager()
-        return windowManager.stagedWindows.filter { window in
+        let all = windowManager.managedWindows + windowManager.stagedWindows
+        return all.filter { window in
             let frame = window.frameBeforeStaging ?? window.frame
             let winScreen = screenManager.screen(containingAXFrame: frame)
             return winScreen == screen
+        }.sorted { w1, w2 in
+            if w1.appName != w2.appName {
+                return w1.appName < w2.appName
+            }
+            return w1.title < w2.title
         }
     }
 
@@ -157,17 +165,17 @@ struct StageTopBarView: View {
             // 展開時のみコンテンツを表示
             if windowManager.isStagedWindowsBarExpanded {
                 HStack(spacing: 0) {
-                    if stagedWindowsForScreen.isEmpty {
+                    if allWindowsForScreen.isEmpty {
                         Spacer()
-                        Text("格納中のウィンドウはありません")
+                        Text("起動中のウィンドウはありません")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
                     } else {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
-                                ForEach(stagedWindowsForScreen) { window in
-                                    stagedWindowItem(window)
+                                ForEach(allWindowsForScreen) { window in
+                                    windowItem(window)
                                 }
                             }
                             .padding(.horizontal, 12)
@@ -188,7 +196,7 @@ struct StageTopBarView: View {
                     .frame(height: 58)
             }
             
-            // 下部中央のインジケーター（ホバー時のヒント。非展開時も極薄のガイド線として見える）
+            // 下部中央のインジゲーター（ホバー時のヒント。非展開時も極小のガイド線として見える）
             RoundedRectangle(cornerRadius: 1)
                 .fill(Color.secondary.opacity(windowManager.isStagedWindowsBarExpanded ? 0.35 : 0.12))
                 .frame(width: 40, height: 2)
@@ -203,42 +211,60 @@ struct StageTopBarView: View {
     }
 
     @ViewBuilder
-    private func stagedWindowItem(_ window: ManagedWindow) -> some View {
+    private func windowItem(_ window: ManagedWindow) -> some View {
+        // 現在格納（Staged）状態にあるかどうかを判定
+        let isStaged = windowManager.stagedWindows.contains(where: { $0.id == window.id })
+        
         Button {
-            windowManager.unstageWindow(window)
+            if isStaged {
+                windowManager.unstageWindow(window)
+            } else {
+                windowManager.stageWindow(window)
+            }
         } label: {
             HStack(spacing: 6) {
                 // アプリアイコンの代用
                 ZStack {
                     RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.accentColor.opacity(0.15))
+                        .fill(isStaged ? Color.secondary.opacity(0.15) : Color.accentColor.opacity(0.15))
                     Text(String(window.appName.prefix(1)))
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(isStaged ? Color.secondary : Color.accentColor)
                 }
                 .frame(width: 20, height: 20)
 
                 VStack(alignment: .leading, spacing: 0) {
                     Text(window.appName)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.primary)
+                        .font(.system(size: 11, weight: isStaged ? .regular : .semibold))
+                        .foregroundStyle(isStaged ? .secondary : .primary)
                         .lineLimit(1)
                     if !window.title.isEmpty && window.title != window.appName {
                         Text(window.title)
                             .font(.system(size: 8))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(isStaged ? .tertiary : .secondary)
                             .lineLimit(1)
                     }
                 }
                 .frame(width: 90, alignment: .leading)
+                
+                // 表示/非表示状態を示すアイコングラフィック
+                Image(systemName: isStaged ? "eye.slash" : "eye.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(isStaged ? Color.secondary.opacity(0.5) : Color.accentColor)
             }
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(hoveredWindowID == window.id
-                          ? Color.accentColor.opacity(0.12)
-                          : Color.secondary.opacity(0.05))
+                    .fill(
+                        hoveredWindowID == window.id
+                        ? (isStaged ? Color.secondary.opacity(0.12) : Color.accentColor.opacity(0.15))
+                        : (isStaged ? Color.clear : Color.accentColor.opacity(0.06))
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isStaged ? Color.clear : Color.accentColor.opacity(0.25), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
