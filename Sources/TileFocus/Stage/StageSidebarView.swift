@@ -184,6 +184,7 @@ struct StageTopBarView: View {
     let screen: NSScreen
     @State private var hoveredWindowID: String?
     @State private var draggedWindow: ManagedWindow?
+    @State private var tempWindows: [ManagedWindow] = []
 
     /// このスクリーンに所属するすべてのウィンドウ（表示中 + 格納中）
     /// ユーザーが定義したカスタムオーダーがある場合はそれに従い、無ければアプリ名・タイトル順にソートします
@@ -271,15 +272,30 @@ struct StageTopBarView: View {
                             .padding(.bottom, 5)
                     }
 
-                    if allWindowsForScreen.isEmpty {
+                    if tempWindows.isEmpty {
                         Text("起動中のウィンドウはありません")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(height: 30)
                     } else {
                         LazyVGrid(columns: columns, spacing: 6) {
-                            ForEach(allWindowsForScreen) { window in
-                                windowItem(window)
+                            ForEach(tempWindows) { window in
+                                if let index = tempWindows.firstIndex(where: { $0.id == window.id }) {
+                                    ZStack(alignment: .topLeading) {
+                                        windowItem(window)
+                                        
+                                        // インデックスバッジ
+                                        Text("\(index + 1)")
+                                            .font(.system(size: 8, weight: .bold))
+                                            .foregroundStyle(.white)
+                                            .frame(width: 13, height: 13)
+                                            .background(Color.purple)
+                                            .clipShape(Circle())
+                                            .offset(x: -3, y: -3)
+                                    }
+                                } else {
+                                    windowItem(window)
+                                }
                             }
                         }
                         .padding(.horizontal, 10)
@@ -307,6 +323,14 @@ struct StageTopBarView: View {
         .contentShape(Rectangle())
         .animation(.easeInOut(duration: 0.18), value: windowManager.isStagedWindowsBarExpanded)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .onAppear {
+            tempWindows = allWindowsForScreen
+        }
+        .onChange(of: allWindowsForScreen) { newValue in
+            if draggedWindow == nil {
+                tempWindows = newValue
+            }
+        }
     }
 
     @ViewBuilder
@@ -417,7 +441,7 @@ struct StageTopBarView: View {
         }
         .onDrop(of: [UTType.text], delegate: WindowDropDelegate(
             item: window,
-            currentWindows: allWindowsForScreen,
+            tempWindows: $tempWindows,
             windowManager: windowManager,
             draggedItem: $draggedWindow
         ))
@@ -426,7 +450,7 @@ struct StageTopBarView: View {
 
 struct WindowDropDelegate: DropDelegate {
     let item: ManagedWindow
-    let currentWindows: [ManagedWindow]
+    @Binding var tempWindows: [ManagedWindow]
     let windowManager: WindowManager
     @Binding var draggedItem: ManagedWindow?
 
@@ -434,23 +458,23 @@ struct WindowDropDelegate: DropDelegate {
         guard let draggedItem = draggedItem else { return }
         guard draggedItem.id != item.id else { return }
 
-        guard let fromIndex = currentWindows.firstIndex(where: { $0.id == draggedItem.id }),
-              let toIndex = currentWindows.firstIndex(where: { $0.id == item.id }) else {
+        guard let fromIndex = tempWindows.firstIndex(where: { $0.id == draggedItem.id }),
+              let toIndex = tempWindows.firstIndex(where: { $0.id == item.id }) else {
             return
         }
 
         if fromIndex != toIndex {
             withAnimation(.easeInOut(duration: 0.2)) {
-                var newOrder = currentWindows
-                newOrder.remove(at: fromIndex)
-                newOrder.insert(draggedItem, at: toIndex)
-                windowManager.customWindowOrder = newOrder.map { $0.id }
+                tempWindows.remove(at: fromIndex)
+                tempWindows.insert(draggedItem, at: toIndex)
             }
         }
     }
 
     func performDrop(info: DropInfo) -> Bool {
         self.draggedItem = nil
+        // ドロップ確定時に WindowManager のオーダーを更新し、実際のレイアウト移動を実行
+        windowManager.customWindowOrder = tempWindows.map { $0.id }
         return true
     }
 
