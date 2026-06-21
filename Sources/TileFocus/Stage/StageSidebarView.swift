@@ -82,12 +82,25 @@ final class StageTopBarController: NSObject {
             let container = StageTopBarContainerView(frame: CGRect(x: 0, y: 0, width: barWidth, height: collapsedHeight))
             container.autoresizingMask = [.width, .height]
             
+            // NSVisualEffectView を作成して背景に設定（本物のすりガラス効果）
+            let effectView = NSVisualEffectView(frame: container.bounds)
+            effectView.autoresizingMask = [.width, .height]
+            effectView.blendingMode = .behindWindow // ウィンドウの背後をブレンド
+            effectView.material = .hudWindow // HUD風のクールなマテリアル
+            effectView.state = .active
+            
+            // 角丸を適用
+            effectView.wantsLayer = true
+            effectView.layer?.cornerRadius = 12
+            effectView.layer?.masksToBounds = true
+            
             let topBarView = StageTopBarView(screen: screen)
                 .environmentObject(windowManager)
             let hosting = NSHostingView(rootView: topBarView)
             hosting.frame = container.bounds
             hosting.autoresizingMask = [.width, .height]
             
+            container.addSubview(effectView)
             container.addSubview(hosting)
             panel.contentView = container
             
@@ -174,6 +187,40 @@ final class StageTopBarController: NSObject {
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().setFrame(targetFrame, display: true)
         }
+    }
+}
+
+// MARK: - LiquidBlobView (SwiftUI)
+
+struct LiquidBlobView: View {
+    @State private var animate = false
+    let color: Color
+    let width: CGFloat
+    let blurRadius: CGFloat
+    let startOffsetX: CGFloat
+    let startOffsetY: CGFloat
+    let endOffsetX: CGFloat
+    let endOffsetY: CGFloat
+    let speed: Double
+
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: width)
+            .blur(radius: blurRadius)
+            .offset(
+                x: animate ? endOffsetX : startOffsetX,
+                y: animate ? endOffsetY : startOffsetY
+            )
+            .scaleEffect(animate ? 1.15 : 0.85)
+            .onAppear {
+                withAnimation(
+                    .easeInOut(duration: speed)
+                    .repeatForever(autoreverses: true)
+                ) {
+                    animate = true
+                }
+            }
     }
 }
 
@@ -339,25 +386,44 @@ struct StageTopBarView: View {
                         if windowManager.isStagedWindowsBarExpanded {
                             GeometryReader { geo in
                                 ZStack {
-                                    // 左側の紫のBlob
-                                    Circle()
-                                        .fill(Color.purple.opacity(0.15))
-                                        .frame(width: geo.size.width * 0.4)
-                                        .blur(radius: 25)
-                                        .offset(x: -geo.size.width * 0.1, y: -geo.size.height * 0.2)
+                                    // 左側の紫のBlob (ゆっくりうねる)
+                                    LiquidBlobView(
+                                        color: Color.purple.opacity(0.35),
+                                        width: geo.size.width * 0.45,
+                                        blurRadius: 30,
+                                        startOffsetX: -geo.size.width * 0.15,
+                                        startOffsetY: -geo.size.height * 0.25,
+                                        endOffsetX: -geo.size.width * 0.05,
+                                        endOffsetY: -geo.size.height * 0.15,
+                                        speed: 5.0
+                                    )
+                                    .blendMode(.plusLighter)
                                     
-                                    // 右側の青〜ピンクのBlob
-                                    Circle()
-                                        .fill(Color.blue.opacity(0.13))
-                                        .frame(width: geo.size.width * 0.35)
-                                        .blur(radius: 20)
-                                        .offset(x: geo.size.width * 0.5, y: geo.size.height * 0.1)
+                                    // 右側の青いBlob (逆方向にうねる)
+                                    LiquidBlobView(
+                                        color: Color.blue.opacity(0.32),
+                                        width: geo.size.width * 0.4,
+                                        blurRadius: 25,
+                                        startOffsetX: geo.size.width * 0.55,
+                                        startOffsetY: geo.size.height * 0.15,
+                                        endOffsetX: geo.size.width * 0.45,
+                                        endOffsetY: geo.size.height * 0.05,
+                                        speed: 6.2
+                                    )
+                                    .blendMode(.plusLighter)
 
-                                    Circle()
-                                        .fill(Color.pink.opacity(0.06))
-                                        .frame(width: geo.size.width * 0.25)
-                                        .blur(radius: 18)
-                                        .offset(x: geo.size.width * 0.2, y: -geo.size.height * 0.1)
+                                    // 中央のピンクのBlob (ゆっくり拡大縮小)
+                                    LiquidBlobView(
+                                        color: Color.pink.opacity(0.25),
+                                        width: geo.size.width * 0.3,
+                                        blurRadius: 22,
+                                        startOffsetX: geo.size.width * 0.15,
+                                        startOffsetY: -geo.size.height * 0.15,
+                                        endOffsetX: geo.size.width * 0.25,
+                                        endOffsetY: -geo.size.height * 0.05,
+                                        speed: 4.5
+                                    )
+                                    .blendMode(.plusLighter)
                                 }
                             }
                         }
