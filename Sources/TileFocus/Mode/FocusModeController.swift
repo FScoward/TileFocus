@@ -546,20 +546,20 @@ final class FocusModeController {
                 if i == 0 {
                     // 左側サイドバーの幅決定（通常のメイン、または2分割メインの左側）
                     let leftX = screenAXFrame.minX + gap.outer
-                    let leftMaxX = actualFrame.minX - gap.inner
+                    let leftMaxX = targetFrame.minX - gap.inner
                     actualLeftX = leftX
                     actualLeftW = max(100, leftMaxX - leftX)
                     
                     // splitCentered, absoluteSplit2, absoluteSplit3 以外の場合は、i == 0 の右端が右サイドバーの左端になる
                     if currentStyle != .splitCentered && currentStyle != .absoluteSplit2 && currentStyle != .absoluteSplit3 {
-                        let rightX = actualFrame.maxX + gap.inner
+                        let rightX = targetFrame.maxX + gap.inner
                         let screenMaxX = screenAXFrame.minX + screenAXFrame.width - gap.outer
                         actualRightX = rightX
                         actualRightW = max(100, screenMaxX - rightX)
                     }
                 } else if i == 1 && currentStyle == .splitCentered {
                     // splitCentered の場合のみ、i == 1（中央メイン右側）の右端が右サイドバーの左端になる
-                    let rightX = actualFrame.maxX + gap.inner
+                    let rightX = targetFrame.maxX + gap.inner
                     let screenMaxX = screenAXFrame.minX + screenAXFrame.width - gap.outer
                     actualRightX = rightX
                     actualRightW = max(100, screenMaxX - rightX)
