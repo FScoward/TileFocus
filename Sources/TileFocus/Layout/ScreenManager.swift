@@ -128,3 +128,16 @@ private extension CGRect {
         return width * height
     }
 }
+
+extension NSScreen {
+    var displayID: CGDirectDisplayID? {
+        deviceDescription[NSDeviceDescriptionKey("NSSDDeviceID")] as? CGDirectDisplayID
+    }
+    
+    var identifier: String {
+        if let id = displayID {
+            return "\(id)"
+        }
+        return localizedName
+    }
+}

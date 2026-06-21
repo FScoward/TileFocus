@@ -317,7 +317,7 @@ struct StageTopBarView: View {
                             
                             ForEach(FocusStyle.allCases) { style in
                                 Button {
-                                    windowManager.focusStyle = style
+                                    windowManager.setFocusStyle(style, for: screen)
                                 } label: {
                                     HStack(spacing: 4) {
                                         Image(systemName: style.iconName)
@@ -329,13 +329,13 @@ struct StageTopBarView: View {
                                     .padding(.vertical, 3)
                                     .background(
                                         RoundedRectangle(cornerRadius: 6)
-                                            .fill(windowManager.focusStyle == style ? Color.purple.opacity(0.15) : Color.clear)
+                                            .fill(windowManager.focusStyle(for: screen) == style ? Color.purple.opacity(0.15) : Color.clear)
                                     )
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 6)
-                                            .stroke(windowManager.focusStyle == style ? Color.purple.opacity(0.3) : Color.clear, lineWidth: 0.5)
+                                            .stroke(windowManager.focusStyle(for: screen) == style ? Color.purple.opacity(0.3) : Color.clear, lineWidth: 0.5)
                                     )
-                                    .foregroundStyle(windowManager.focusStyle == style ? Color.purple : Color.primary)
+                                    .foregroundStyle(windowManager.focusStyle(for: screen) == style ? Color.purple : Color.primary)
                                 }
                                 .buttonStyle(.plain)
                             }

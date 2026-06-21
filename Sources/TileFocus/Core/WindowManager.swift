@@ -41,13 +41,37 @@ final class WindowManager: ObservableObject {
     /// 上部格納バーが展開されているかどうか
     @Published var isStagedWindowsBarExpanded: Bool = false
 
-    /// Focus Mode の現在のスタイル（中央・左・右メイン）
+    /// Focus Mode の現在のスタイル（中央・左・右メイン、個別設定が無い場合のデフォルト）
     @Published var focusStyle: FocusStyle = .centered {
         didSet {
             if currentMode == .focus {
                 focusController?.scheduleLayoutUpdate()
             }
         }
+    }
+
+    /// 指定されたスクリーンの FocusStyle を取得する
+    func focusStyle(for screen: NSScreen) -> FocusStyle {
+        let key = screen.identifier
+        if let raw = AppSettings.shared.focusStylesByMonitor[key],
+           let style = FocusStyle(rawValue: raw) {
+            return style
+        }
+        return focusStyle
+    }
+
+    /// 指定されたスクリーンの FocusStyle を更新する
+    func setFocusStyle(_ style: FocusStyle, for screen: NSScreen) {
+        let key = screen.identifier
+        var dict = AppSettings.shared.focusStylesByMonitor
+        dict[key] = style.rawValue
+        AppSettings.shared.focusStylesByMonitor = dict
+        
+        // レイアウト更新のトリガー
+        if currentMode == .focus {
+            focusController?.scheduleLayoutUpdate()
+        }
+        objectWillChange.send()
     }
 
     private func triggerLayoutUpdate() {

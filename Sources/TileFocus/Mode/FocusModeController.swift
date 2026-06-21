@@ -314,11 +314,6 @@ final class FocusModeController {
             screenGroups[idx].append(window)
         }
 
-        let currentStyle = windowManager.focusStyle
-        var activeLayout = layout
-        activeLayout.style = currentStyle
-        let gap = activeLayout.gap
-        let minSideWindowHeight = activeLayout.minSideWindowHeight
 
         // フェーズ1: ホバーバーと同じソート順を適用し、完全分割の格納・復帰（Stage/Unstage）チェック
         var hasStateChanged = false
@@ -327,6 +322,9 @@ final class FocusModeController {
 
         for (si, group) in screenGroups.enumerated() {
             guard !group.isEmpty else { continue }
+            
+            let screen = screens[si]
+            let monitorStyle = windowManager.focusStyle(for: screen)
             
             // group を ホバーバー (allWindowsForScreen) と完全に同じロジックでソート
             var sortedGroup = group
@@ -373,7 +371,7 @@ final class FocusModeController {
 
             // メインウィンドウの数を決定
             let mainCount: Int
-            switch currentStyle {
+            switch monitorStyle {
             case .splitCentered:
                 mainCount = sortedGroup.count >= 2 ? 2 : 1
             case .absoluteSplit2:
@@ -388,7 +386,7 @@ final class FocusModeController {
             let mains = Array(sortedGroup.prefix(mainCount))
             let sides = Array(sortedGroup.dropFirst(mainCount))
 
-            if currentStyle == .absoluteSplit2 || currentStyle == .absoluteSplit3 {
+            if monitorStyle == .absoluteSplit2 || monitorStyle == .absoluteSplit3 {
                 // mains (上位2/3個) の中で staged になっているものを unstage する
                 for window in mains {
                     if window.state == .staged {
@@ -435,6 +433,12 @@ final class FocusModeController {
             let screen = screens[si]
             let screenAXFrame = screenManager.visibleFrameInAX(for: screen)
             Log.info(Self.tag, "  Screen[\(si)] \(activeGroup.count)枚 AXFrame=\(screenAXFrame)")
+
+            let monitorStyle = windowManager.focusStyle(for: screen)
+            var activeLayout = layout
+            activeLayout.style = monitorStyle
+            let gap = activeLayout.gap
+            let minSideWindowHeight = activeLayout.minSideWindowHeight
 
             let idealFrames = activeLayout.calculateFrames(windowCount: activeGroup.count, screenFrame: screenAXFrame)
 
@@ -485,7 +489,7 @@ final class FocusModeController {
                     }
 
                     let isLeft: Bool
-                    switch currentStyle {
+                    switch monitorStyle {
                     case .centered:
                         isLeft = (i % 2 == 1)
                     case .leftMain:
@@ -551,13 +555,13 @@ final class FocusModeController {
                     actualLeftW = max(100, leftMaxX - leftX)
                     
                     // splitCentered, absoluteSplit2, absoluteSplit3 以外の場合は、i == 0 の右端が右サイドバーの左端になる
-                    if currentStyle != .splitCentered && currentStyle != .absoluteSplit2 && currentStyle != .absoluteSplit3 {
+                    if monitorStyle != .splitCentered && monitorStyle != .absoluteSplit2 && monitorStyle != .absoluteSplit3 {
                         let rightX = targetFrame.maxX + gap.inner
                         let screenMaxX = screenAXFrame.minX + screenAXFrame.width - gap.outer
                         actualRightX = rightX
                         actualRightW = max(100, screenMaxX - rightX)
                     }
-                } else if i == 1 && currentStyle == .splitCentered {
+                } else if i == 1 && monitorStyle == .splitCentered {
                     // splitCentered の場合のみ、i == 1（中央メイン右側）の右端が右サイドバーの左端になる
                     let rightX = targetFrame.maxX + gap.inner
                     let screenMaxX = screenAXFrame.minX + screenAXFrame.width - gap.outer
