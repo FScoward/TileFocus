@@ -356,6 +356,19 @@ final class WindowManager: ObservableObject {
                 windows.append(managed)
             }
         }
+ 
+        // stagedWindows のクリーンアップ（終了済みのアプリや存在しないウィンドウを排除）
+        let runningPids = Set(running.map { $0.processIdentifier })
+        let validStaged = stagedWindows.filter { staged in
+            guard runningPids.contains(staged.pid) else { return false }
+            // アプリは起動しているが、ウィンドウがまだ実在しているか
+            let axWindows = AccessibilityHelper.getWindows(for: staged.pid)
+            return axWindows.contains { axWin in
+                AccessibilityHelper.getWindowID(of: axWin) == staged.windowID
+            }
+        }
+        stagedWindows = validStaged
+        stageManager?.syncStagedWindows(validStaged)
 
         managedWindows = windows
         print("[WindowManager] ウィンドウリスト更新: \(windows.count) 件 (front=\(frontPid.map(String.init) ?? "none"))")
@@ -389,6 +402,19 @@ final class WindowManager: ObservableObject {
             tilingController?.retile()
         } else if currentMode == .focus {
             focusController?.handleWindowClosed(id: id)
+        }
+    }
+
+    /// 指定された pid のすべてのウィンドウを削除（アプリ終了時など）
+    func removeWindows(for pid: pid_t) {
+        managedWindows.removeAll { $0.pid == pid }
+        stagedWindows.removeAll { $0.pid == pid }
+        stageManager?.syncStagedWindows(stagedWindows)
+        
+        if currentMode == .tiling {
+            tilingController?.retile()
+        } else if currentMode == .focus {
+            requestFocusLayoutUpdate()
         }
     }
 
@@ -508,6 +534,15 @@ extension WindowManager: WindowObserverDelegate {
             if currentMode == .focus {
                 focusController?.handleFocusChanged(pid: pid, title: title)
             }
+        }
+    }
+
+    nonisolated func windowObserver(
+        _ observer: WindowObserver,
+        didDetectApplicationTerminated pid: pid_t
+    ) {
+        Task { @MainActor in
+            removeWindows(for: pid)
         }
     }
 }

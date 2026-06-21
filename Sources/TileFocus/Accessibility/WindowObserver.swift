@@ -12,6 +12,8 @@ protocol WindowObserverDelegate: AnyObject {
     func windowObserver(_ observer: WindowObserver, didDetectWindowMoved window: ManagedWindow)
     /// フォーカス（アクティブウィンドウ）が変更された
     func windowObserver(_ observer: WindowObserver, didDetectFocusChanged pid: pid_t, title: String)
+    /// アプリが終了した
+    func windowObserver(_ observer: WindowObserver, didDetectApplicationTerminated pid: pid_t)
 }
 
 // MARK: - WindowObserver
@@ -66,10 +68,13 @@ final class WindowObserver {
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            guard let self else { return }
             guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
                     as? NSRunningApplication else { return }
-            Log.info("WindowObserver", "アプリ終了: \(app.localizedName ?? "?") (pid=\(app.processIdentifier))")
-            self?.unregisterObserver(for: app.processIdentifier)
+            let pid = app.processIdentifier
+            Log.info("WindowObserver", "アプリ終了: \(app.localizedName ?? "?") (pid=\(pid))")
+            self.delegate?.windowObserver(self, didDetectApplicationTerminated: pid)
+            self.unregisterObserver(for: pid)
         }
 
         workspaceObservers = [launchToken, terminateToken]

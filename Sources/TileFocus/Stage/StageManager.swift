@@ -121,6 +121,12 @@ final class StageManager {
         }
     }
 
+    /// 格納中のウィンドウリストを外部の最新状態と同期する
+    @MainActor
+    func syncStagedWindows(_ windows: [ManagedWindow]) {
+        self.staged = windows
+    }
+
     // MARK: - Private
 
     private func defaultFrame() -> CGRect {
