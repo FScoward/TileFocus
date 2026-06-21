@@ -305,9 +305,14 @@ final class FocusModeController {
             
             // メインウィンドウの数を決定
             let mainCount: Int
-            if currentStyle == .splitCentered && group.count >= 2 {
-                mainCount = 2
-            } else {
+            switch currentStyle {
+            case .splitCentered:
+                mainCount = group.count >= 2 ? 2 : 1
+            case .absoluteSplit2:
+                mainCount = min(2, group.count)
+            case .absoluteSplit3:
+                mainCount = min(3, group.count)
+            default:
                 mainCount = 1
             }
             
@@ -368,15 +373,20 @@ final class FocusModeController {
                 var isLeftWindow = false
                 var isRightWindow = false
 
-                let isMain = (i == 0) || (i == 1 && currentStyle == .splitCentered)
+                let isMain = i < mainCount
 
                 if isMain {
                     // MAIN ウィンドウは常に理想通りのサイズで配置
                     targetFrame = idealFrames[min(i, idealFrames.count - 1)]
-                    role = i == 0 ? "MAIN_L" : "MAIN_R"
+                    role = "MAIN_\(i)"
                 } else {
-                    // SIDE ウィンドウ
-                    let idealFrame = idealFrames[min(i, idealFrames.count - 1)]
+                    if currentStyle == .absoluteSplit2 || currentStyle == .absoluteSplit3 {
+                        // 完全2分割/完全3分割では、メイン以外のウィンドウは画面外に格納
+                        targetFrame = idealFrames[min(i, idealFrames.count - 1)]
+                        role = "OFFSCREEN[\(i)]"
+                    } else {
+                        // SIDE ウィンドウ
+                        let idealFrame = idealFrames[min(i, idealFrames.count - 1)]
                     
                     // 前回の実際の高さが、前回の理想の高さより大きい場合、それをこのウィンドウの最小高さ制限とみなす
                     // （ただし画面外退避されていた時の 200px は除外する。またリサイズ失敗したウィンドウも除外する）
@@ -400,6 +410,8 @@ final class FocusModeController {
                         isLeft = true
                     case .splitCentered:
                         isLeft = ((i - 2) % 2 == 0)
+                    case .absoluteSplit2, .absoluteSplit3:
+                        isLeft = false
                     }
                     
                     let currentY = isLeft ? currentLeftY : currentRightY
@@ -432,6 +444,7 @@ final class FocusModeController {
                         role = "OFFSCREEN[\(i)]"
                     }
                 }
+            }
 
                 Log.info(Self.tag, "    \(role) \"\(window.appName) - \(window.title)\" → \(targetFrame)")
                 let success = AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
@@ -454,8 +467,8 @@ final class FocusModeController {
                     actualLeftX = leftX
                     actualLeftW = max(100, leftMaxX - leftX)
                     
-                    // splitCentered 以外の場合は、i == 0 の右端が右サイドバーの左端になる
-                    if currentStyle != .splitCentered {
+                    // splitCentered, absoluteSplit2, absoluteSplit3 以外の場合は、i == 0 の右端が右サイドバーの左端になる
+                    if currentStyle != .splitCentered && currentStyle != .absoluteSplit2 && currentStyle != .absoluteSplit3 {
                         let rightX = actualFrame.maxX + gap.inner
                         let screenMaxX = screenAXFrame.minX + screenAXFrame.width - gap.outer
                         actualRightX = rightX

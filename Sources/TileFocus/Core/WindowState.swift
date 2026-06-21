@@ -65,6 +65,8 @@ enum FocusStyle: String, CaseIterable, Identifiable {
     case leftMain
     case rightMain
     case splitCentered
+    case absoluteSplit2
+    case absoluteSplit3
 
     var id: String { rawValue }
 
@@ -74,6 +76,8 @@ enum FocusStyle: String, CaseIterable, Identifiable {
         case .leftMain: return "左メイン"
         case .rightMain: return "右メイン"
         case .splitCentered: return "中央2分割"
+        case .absoluteSplit2: return "完全2分割"
+        case .absoluteSplit3: return "完全3分割"
         }
     }
 
@@ -82,7 +86,9 @@ enum FocusStyle: String, CaseIterable, Identifiable {
         case .centered: return "rectangle.center.inset.filled"
         case .leftMain: return "square.leadingthird.inset.filled"
         case .rightMain: return "square.trailingthird.inset.filled"
-        case .splitCentered: return "square.split.2x1.fill"
+        case .splitCentered: return "rectangle.split.3x1.fill"
+        case .absoluteSplit2: return "square.split.2x1.fill"
+        case .absoluteSplit3: return "square.split.3x1.fill"
         }
     }
 }

@@ -227,6 +227,47 @@ struct FocusLayout: Layout {
                 }
             }
             return frames
+
+        case .absoluteSplit2:
+            if windowCount == 1 {
+                return [CGRect(x: startX, y: startY, width: totalW, height: totalH)]
+            }
+            
+            let mainW = (totalW - inner) / 2
+            let leftFrame = CGRect(x: startX, y: startY, width: mainW, height: totalH)
+            let rightFrame = CGRect(x: startX + mainW + inner, y: startY, width: mainW, height: totalH)
+            
+            var frames = [leftFrame, rightFrame]
+            if windowCount > 2 {
+                for i in 2..<windowCount {
+                    frames.append(CGRect(x: -4000, y: startY + CGFloat(i) * 10, width: 200, height: 200))
+                }
+            }
+            return frames
+
+        case .absoluteSplit3:
+            if windowCount == 1 {
+                return [CGRect(x: startX, y: startY, width: totalW, height: totalH)]
+            } else if windowCount == 2 {
+                let mainW = (totalW - inner) / 2
+                return [
+                    CGRect(x: startX, y: startY, width: mainW, height: totalH),
+                    CGRect(x: startX + mainW + inner, y: startY, width: mainW, height: totalH)
+                ]
+            }
+            
+            let mainW = (totalW - inner * 2) / 3
+            let leftFrame = CGRect(x: startX, y: startY, width: mainW, height: totalH)
+            let centerFrame = CGRect(x: startX + mainW + inner, y: startY, width: mainW, height: totalH)
+            let rightFrame = CGRect(x: startX + (mainW + inner) * 2, y: startY, width: mainW, height: totalH)
+            
+            var frames = [leftFrame, centerFrame, rightFrame]
+            if windowCount > 3 {
+                for i in 3..<windowCount {
+                    frames.append(CGRect(x: -4000, y: startY + CGFloat(i) * 10, width: 200, height: 200))
+                }
+            }
+            return frames
         }
     }
 }
