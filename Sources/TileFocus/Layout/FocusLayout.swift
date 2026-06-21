@@ -19,6 +19,9 @@ struct FocusLayout: Layout {
     /// メインウィンドウの幅比率（全体の何 %）
     var mainWidthRatio: CGFloat = 0.55
 
+    /// 中央2分割レイアウトの際のメインウィンドウの合計幅比率（全体の何 %）
+    var splitMainWidthRatio: CGFloat = 0.70
+
     /// サイドバーの 1 ウィンドウあたりの最小高さ（px）
     /// これを下回る場合はウィンドウを表示しない（truncate）
     var minSideWindowHeight: CGFloat = 160
@@ -172,7 +175,7 @@ struct FocusLayout: Layout {
                 }
             }
 
-            let mainTotalW = (totalW - inner * 2) * mainWidthRatio
+            let mainTotalW = (totalW - inner * 2) * splitMainWidthRatio
             let mainEachW = (mainTotalW - inner) / 2
             let remainingW = (totalW - inner * 2) - mainTotalW
             let sideW = remainingW / 2
