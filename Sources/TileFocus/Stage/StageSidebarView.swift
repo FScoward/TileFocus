@@ -1,12 +1,37 @@
 import SwiftUI
 import AppKit
 
-/// 画面上部に表示するホバー式のフローティングバー（格納ウィンドウ一覧）
-class StageTopBarPanel: NSPanel {
+/// ホバー検出用のカスタムコンテナビュー（NSHostingView をラップしてホバーイベントを確実にキャッチする）
+class StageTopBarContainerView: NSView {
     private var trackingArea: NSTrackingArea?
     var onMouseEnter: (() -> Void)?
     var onMouseExit: (() -> Void)?
 
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        
+        if let existing = trackingArea {
+            removeTrackingArea(existing)
+        }
+        
+        // activeAlways: アプリが非アクティブでもマウスイベントを拾う
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
+        let area = NSTrackingArea(rect: self.bounds, options: options, owner: self, userInfo: nil)
+        addTrackingArea(area)
+        self.trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onMouseEnter?()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onMouseExit?()
+    }
+}
+
+/// 画面上部に表示するホバー式のフローティングバー（格納ウィンドウ一覧）
+class StageTopBarPanel: NSPanel {
     init(contentRect: NSRect) {
         super.init(
             contentRect: contentRect,
@@ -17,30 +42,13 @@ class StageTopBarPanel: NSPanel {
         self.level = .floating
         self.isOpaque = false
         self.backgroundColor = .clear
-        self.hasShadow = false // 影は collapsed 時にノイズになるため無効化（SwiftUI側で制御）
+        self.hasShadow = false
         self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-        
-        setupTrackingArea()
     }
 
     // ★重要: 画面外へのはみ出し制限を無効化し、指定した画面外座標に正確にスライドして隠せるようにする
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
         return frameRect
-    }
-
-    private func setupTrackingArea() {
-        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
-        let area = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
-        contentView?.addTrackingArea(area)
-        self.trackingArea = area
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        onMouseEnter?()
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        onMouseExit?()
     }
 }
 
@@ -67,23 +75,35 @@ final class StageTopBarController: NSObject {
             
             let panel = StageTopBarPanel(contentRect: panelFrame)
             
+            // コンテナビューの作成
+            let container = StageTopBarContainerView(frame: CGRect(x: 0, y: 0, width: barWidth, height: barHeight))
+            container.autoresizingMask = [.width, .height]
+            
             let topBarView = StageTopBarView(screen: screen)
                 .environmentObject(windowManager)
             let hosting = NSHostingView(rootView: topBarView)
-            panel.contentView = hosting
+            hosting.frame = container.bounds
+            hosting.autoresizingMask = [.width, .height]
+            
+            container.addSubview(hosting)
+            panel.contentView = container
             
             // ホバーイベントの紐付け
-            panel.onMouseEnter = { [weak self, weak panel, weak windowManager] in
+            container.onMouseEnter = { [weak self, weak panel, weak windowManager] in
                 guard let self, let panel else { return }
+                Log.info("StageTopBarController", "mouseEntered 検知")
                 windowManager?.isStagedWindowsBarExpanded = true
                 self.updatePanelCollapseState(collapsed: false, panel: panel, screen: screen)
             }
             
-            panel.onMouseExit = { [weak self, weak panel, weak windowManager] in
+            container.onMouseExit = { [weak self, weak panel, weak windowManager] in
                 guard let self, let panel else { return }
+                Log.info("StageTopBarController", "mouseExited 検知")
                 windowManager?.isStagedWindowsBarExpanded = false
                 self.updatePanelCollapseState(collapsed: true, panel: panel, screen: screen)
             }
+            
+            Log.info("StageTopBarController", "画面 '\(screen.localizedName)': visibleFrame=\(screenFrame), panelFrame=\(panelFrame)")
             
             panels[screen] = panel
             panel.orderFrontRegardless()
@@ -134,14 +154,14 @@ struct StageTopBarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // 展開時のみ実体を表示する
+            // 展開時のみコンテンツを表示
             if windowManager.isStagedWindowsBarExpanded {
                 HStack(spacing: 0) {
                     if stagedWindowsForScreen.isEmpty {
                         Spacer()
                         Text("格納中のウィンドウはありません")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.white)
                         Spacer()
                     } else {
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -156,28 +176,22 @@ struct StageTopBarView: View {
                     }
                 }
                 .frame(height: 58)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(.ultraThinMaterial)
-                        .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 3)
-                )
-                .transition(.opacity) // 滑らかな表示切り替え
             } else {
-                // 非展開時は高さを維持するためのダミー領域（透明だがヒットテスト可能）
                 Spacer()
-                    .frame(height: 58)
             }
             
-            // 下部中央のインジケーター（ホバー時のヒント。非展開時も極小のガイド線として見える）
-            RoundedRectangle(cornerRadius: 1)
-                .fill(Color.secondary.opacity(windowManager.isStagedWindowsBarExpanded ? 0.3 : 0.18))
-                .frame(width: 40, height: 2)
-                .padding(.bottom, 1)
+            // 非展開時も見えやすいように、下部に赤い境界線を表示（デバッグ用！）
+            Rectangle()
+                .fill(windowManager.isStagedWindowsBarExpanded ? Color.clear : Color.red)
+                .frame(height: 2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // 重要: 透明度を低くして透過されるのを防ぐため、ビュー全体の背景に超微薄の透明色を置き、全体の不透明度は 1.0 に維持する
-        .background(Color.black.opacity(0.001))
-        .contentShape(Rectangle()) // ヒットテストをビュー全体で有効にする
+        // デバッグ用に背景色を半透明の赤にし、どこにあるか絶対に視認できるようにする
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(windowManager.isStagedWindowsBarExpanded ? Color.black.opacity(0.8) : Color.red.opacity(0.3))
+        )
+        .contentShape(Rectangle())
         .animation(.easeInOut(duration: 0.18), value: windowManager.isStagedWindowsBarExpanded)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
@@ -191,21 +205,22 @@ struct StageTopBarView: View {
                 // アプリアイコンの代用
                 ZStack {
                     RoundedRectangle(cornerRadius: 5)
-                        .fill(Color.accentColor.opacity(0.15))
+                        .fill(Color.white.opacity(0.2))
                     Text(String(window.appName.prefix(1)))
                         .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(Color.white)
                 }
                 .frame(width: 20, height: 20)
 
                 VStack(alignment: .leading, spacing: 0) {
                     Text(window.appName)
                         .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.white)
                         .lineLimit(1)
                     if !window.title.isEmpty && window.title != window.appName {
                         Text(window.title)
                             .font(.system(size: 8))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.white.opacity(0.7))
                             .lineLimit(1)
                     }
                 }
@@ -216,8 +231,8 @@ struct StageTopBarView: View {
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(hoveredWindowID == window.id
-                          ? Color.accentColor.opacity(0.12)
-                          : Color.secondary.opacity(0.05))
+                          ? Color.white.opacity(0.3)
+                          : Color.white.opacity(0.1))
             )
         }
         .buttonStyle(.plain)
