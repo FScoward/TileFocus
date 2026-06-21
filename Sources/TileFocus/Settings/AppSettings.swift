@@ -1,5 +1,19 @@
 import Foundation
 
+/// 格納方法の定義
+enum StageMethod: String, CaseIterable, Identifiable {
+    case offscreen
+    case dock
+
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .offscreen: return "画面外に退避（高速・推奨）"
+        case .dock: return "Dockにしまう（最小化）"
+        }
+    }
+}
+
 /// アプリ設定の永続化（UserDefaults ラッパー）
 final class AppSettings: ObservableObject {
 
@@ -15,6 +29,7 @@ final class AppSettings: ObservableObject {
         static let tilingGapInner = "tilingGapInner"
         static let defaultLayoutIndex = "defaultLayoutIndex"
         static let launchAtLogin = "launchAtLogin"
+        static let stageMethod = "stageMethod"
     }
 
     // MARK: - Settings
@@ -22,6 +37,11 @@ final class AppSettings: ObservableObject {
     /// 起動時のモード
     @Published var defaultMode: AppMode {
         didSet { defaults.set(defaultMode.rawValue, forKey: Keys.defaultMode) }
+    }
+
+    /// 格納方法
+    @Published var stageMethod: StageMethod {
+        didSet { defaults.set(stageMethod.rawValue, forKey: Keys.stageMethod) }
     }
 
     /// タイリングの外側ギャップ（px）
@@ -45,6 +65,10 @@ final class AppSettings: ObservableObject {
         defaultMode = AppMode(
             rawValue: defaults.string(forKey: Keys.defaultMode) ?? ""
         ) ?? .off
+        
+        stageMethod = StageMethod(
+            rawValue: defaults.string(forKey: Keys.stageMethod) ?? ""
+        ) ?? .offscreen
 
         tilingGapOuter = CGFloat(
             defaults.double(forKey: Keys.tilingGapOuter) == 0

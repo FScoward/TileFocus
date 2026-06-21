@@ -44,6 +44,14 @@ private struct GeneralSettingsTab: View {
                 }
                 .pickerStyle(.segmented)
             }
+
+            Section("Stage Mode") {
+                Picker("ウィンドウ格納方法", selection: $settings.stageMethod) {
+                    ForEach(StageMethod.allCases) { method in
+                        Text(method.displayName).tag(method)
+                    }
+                }
+            }
         }
         .formStyle(.grouped)
         .padding()

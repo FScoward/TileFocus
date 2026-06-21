@@ -25,15 +25,21 @@ final class StageManager {
         mutableWindow.frameBeforeStaging = window.frame
         mutableWindow.state = .staged
 
-        // ウィンドウを画面外に即時移動（animateMoveAndResize は使わない）
-        let hiddenPosition = CGPoint(x: stagingX, y: window.frame.origin.y)
+        // 格納方法に基づいて処理
+        let method = AppSettings.shared.stageMethod
         if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) {
             windowManager.setTilingInProgress(true)
-            AccessibilityHelper.moveAndResize(
-                window: axWindow,
-                to: hiddenPosition,
-                size: window.frame.size
-            )
+            switch method {
+            case .offscreen:
+                let hiddenPosition = CGPoint(x: stagingX, y: window.frame.origin.y)
+                AccessibilityHelper.moveAndResize(
+                    window: axWindow,
+                    to: hiddenPosition,
+                    size: window.frame.size
+                )
+            case .dock:
+                AccessibilityHelper.minimize(window: axWindow)
+            }
             windowManager.setTilingInProgress(false)
         }
 
@@ -66,10 +72,19 @@ final class StageManager {
         restoredWindow.frame = targetFrame
         restoredWindow.frameBeforeStaging = nil
 
-        // ウィンドウを元の位置に即時移動（animateMoveAndResize は使わない）
+        // 格納方法に基づいて復帰処理
+        let method = AppSettings.shared.stageMethod
         if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) {
             windowManager.setTilingInProgress(true)
-            AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
+            switch method {
+            case .offscreen:
+                AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
+            case .dock:
+                AccessibilityHelper.restore(window: axWindow)
+                // 復帰直後はサイズ変更が拒否される場合があるため、一旦少し待たずに即時移動を試み、
+                // OS側で復帰した後に確実にサイズと位置を合わせる
+                AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
+            }
             windowManager.setTilingInProgress(false)
             AccessibilityHelper.focus(window: axWindow)
         }
