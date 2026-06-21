@@ -243,60 +243,30 @@ final class FocusModeController {
     func applyLayout() {
         isApplyingLayout = true
         guard let windowManager else { return }
-        let windows = windowManager.managedWindows.filter { $0.state != .staged }
+        
+        // staged も含めた全ウィンドウを対象とする（ホバーバーの表示順と同期するため）
+        let allWindows = windowManager.managedWindows + windowManager.stagedWindows
 
-        Log.info(Self.tag, "applyLayout() 開始 focusedID=\(focusedWindowID ?? "nil") 対象=\(windows.count)枚")
+        Log.info(Self.tag, "applyLayout() 開始 focusedID=\(focusedWindowID ?? "nil") 対象=\(allWindows.count)枚")
 
-        guard !windows.isEmpty else {
+        guard !allWindows.isEmpty else {
             Log.warn(Self.tag, "applyLayout: 対象ウィンドウなし")
+            isApplyingLayout = false
             return
         }
 
-        // マスターウィンドウを先頭に並び替え
-        var ordered = windows
-        
-        // focusHistory に基づいて ordered を並び替える（最近フォーカスされたものが先頭）
-        ordered.sort { w1, w2 in
-            let idx1 = focusHistory.firstIndex(of: w1.id)
-            let idx2 = focusHistory.firstIndex(of: w2.id)
-            switch (idx1, idx2) {
-            case (.some(let i1), .some(let i2)):
-                return i1 < i2
-            case (.some, .none):
-                return true
-            case (.none, .some):
-                return false
-            case (.none, .none):
-                return false
-            }
-        }
-        
-        // masterWindowID が無効なら focusedWindowID をマスターとして設定
-        if let masterID = masterWindowID, ordered.contains(where: { $0.id == masterID }) {
-            if let idx = ordered.firstIndex(where: { $0.id == masterID }) {
-                let master = ordered.remove(at: idx)
-                ordered.insert(master, at: 0)
-                Log.debug(Self.tag, "  先頭(マスター): \"\(master.appName) - \(master.title)\"")
-            }
-        } else {
-            if let focusedID = focusedWindowID, let idx = ordered.firstIndex(where: { $0.id == focusedID }) {
-                let focused = ordered.remove(at: idx)
-                ordered.insert(focused, at: 0)
-                masterWindowID = focused.id
-                Log.info(Self.tag, "  マスター未指定または消失 ➔ フォーカスウィンドウをマスターに設定: \"\(focused.appName)\"")
-            } else if let first = ordered.first {
-                masterWindowID = first.id
-                Log.warn(Self.tag, "  フォーカスなし ➔ 先頭をマスターに設定: \"\(first.appName)\"")
-            }
-        }
-
-        // スクリーン別グループ化（NSScreen.screens の順序の揺らぎを防ぐため物理座標でソート）
+        // スクリーンを取得
         let screens = NSScreen.screens.sorted { s1, s2 in
             if s1.frame.origin.x != s2.frame.origin.x {
                 return s1.frame.origin.x < s2.frame.origin.x
             }
             return s1.frame.origin.y > s2.frame.origin.y
         }
+        
+        // Zオーダーの順序揺らぎを防ぐため、まずはそのまま ordered とする
+        let ordered = allWindows
+        
+        // スクリーン別グループ化
         var screenGroups: [[ManagedWindow]] = Array(repeating: [], count: max(screens.count, 1))
         for window in ordered {
             var currentFrame = window.frame
@@ -314,56 +284,26 @@ final class FocusModeController {
             screenGroups[idx].append(window)
         }
 
-        // タイリング中フラグ（全スクリーン分の処理全体を囲む）
-        windowManager.setTilingInProgress(true)
-
-        // フォーカスするウィンドウの AXUIElement（配置後に1回だけ focus() する）
-        var axWindowToFocus: AXUIElement? = nil
-        // 配置後のフレームを記録（ManagedWindow.frame 更新用）
-        var appliedFrames: [(id: String, frame: CGRect)] = []
-        // 配置指示した理想サイズを記録（次回のリサイズ制限チェック用）
-        var appliedIdealSizes: [(id: String, size: CGSize)] = []
-
         let currentStyle = windowManager.focusStyle
         var activeLayout = layout
         activeLayout.style = currentStyle
         let gap = activeLayout.gap
         let minSideWindowHeight = activeLayout.minSideWindowHeight
 
+        // フェーズ1: ホバーバーと同じソート順を適用し、完全分割の格納・復帰（Stage/Unstage）チェック
+        var hasStateChanged = false
+        var activeGroups: [Int: [ManagedWindow]] = [:]
+        var screenMainCounts: [Int: Int] = [:]
+
         for (si, group) in screenGroups.enumerated() {
             guard !group.isEmpty else { continue }
             
-            // メインウィンドウの数を決定
-            let mainCount: Int
-            switch currentStyle {
-            case .splitCentered:
-                mainCount = group.count >= 2 ? 2 : 1
-            case .absoluteSplit2:
-                mainCount = min(2, group.count)
-            case .absoluteSplit3:
-                mainCount = min(3, group.count)
-            default:
-                mainCount = 1
-            }
-            
-            let mains: [ManagedWindow]
-            let sides: [ManagedWindow]
-
-            if currentStyle == .absoluteSplit2 || currentStyle == .absoluteSplit3 {
-                mains = Array(group.prefix(mainCount))
-                sides = Array(group.dropFirst(mainCount))
-
-                // 完全分割レイアウトでは、sides（上位からあぶれたウィンドウ）をDockに格納する
-                for window in sides {
-                    Log.info(Self.tag, "完全分割ルールにより格納: \"\(window.appName) - \(window.title)\"")
-                    windowManager.stageWindow(window, forceDock: true)
-                }
-            } else {
-                let tempMains = Array(group.prefix(mainCount))
-                let tempSides = Array(group.dropFirst(mainCount))
-
-                // sides を customWindowOrder に基づいてソート
-                let sortedSides = tempSides.sorted { w1, w2 in
+            // group を ホバーバー (allWindowsForScreen) と完全に同じロジックでソート
+            var sortedGroup = group
+            if let focusedID = focusedWindowID,
+               let masterIndex = sortedGroup.firstIndex(where: { $0.id == focusedID }) {
+                let master = sortedGroup.remove(at: masterIndex)
+                let sortedOthers = sortedGroup.sorted { w1, w2 in
                     let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
                     let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
                     switch (idx1, idx2) {
@@ -380,35 +320,109 @@ final class FocusModeController {
                         return w1.title < w2.title
                     }
                 }
-                mains = tempMains
-                sides = sortedSides
+                sortedGroup = [master] + sortedOthers
+            } else {
+                sortedGroup = sortedGroup.sorted { w1, w2 in
+                    let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
+                    let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
+                    switch (idx1, idx2) {
+                    case (.some(let i1), .some(let i2)):
+                        return i1 < i2
+                    case (.some, .none):
+                        return true
+                    case (.none, .some):
+                        return false
+                    case (.none, .none):
+                        if w1.appName != w2.appName {
+                            return w1.appName < w2.appName
+                        }
+                        return w1.title < w2.title
+                    }
+                }
             }
 
-            let sortedGroup = mains + (currentStyle == .absoluteSplit2 || currentStyle == .absoluteSplit3 ? [] : sides)
+            // メインウィンドウの数を決定
+            let mainCount: Int
+            switch currentStyle {
+            case .splitCentered:
+                mainCount = sortedGroup.count >= 2 ? 2 : 1
+            case .absoluteSplit2:
+                mainCount = min(2, sortedGroup.count)
+            case .absoluteSplit3:
+                mainCount = min(3, sortedGroup.count)
+            default:
+                mainCount = 1
+            }
+            screenMainCounts[si] = mainCount
+            
+            let mains = Array(sortedGroup.prefix(mainCount))
+            let sides = Array(sortedGroup.dropFirst(mainCount))
 
+            if currentStyle == .absoluteSplit2 || currentStyle == .absoluteSplit3 {
+                // mains (上位2/3個) の中で staged になっているものを unstage する
+                for window in mains {
+                    if window.state == .staged {
+                        Log.info(Self.tag, "完全分割の上位に入るため復帰: \"\(window.appName) - \(window.title)\"")
+                        windowManager.unstageWindow(window)
+                        hasStateChanged = true
+                    }
+                }
+                // sides (上位からあぶれたもの) の中で staged でないものを stage (Dock) する
+                for window in sides {
+                    if window.state != .staged {
+                        Log.info(Self.tag, "完全分割の上位から外れたため格納: \"\(window.appName) - \(window.title)\"")
+                        windowManager.stageWindow(window, forceDock: true)
+                        hasStateChanged = true
+                    }
+                }
+                activeGroups[si] = mains.filter { $0.state != .staged }
+            } else {
+                // 通常モードでは staged でないもののみを画面に配置
+                activeGroups[si] = sortedGroup.filter { $0.state != .staged }
+            }
+        }
+        
+        if hasStateChanged {
+            // 格納・復帰によって managedWindows / stagedWindows が更新され、
+            // 自動的に次の applyLayout がスケジュールされるため、今回の配置処理はスキップする
+            isApplyingLayout = false
+            return
+        }
+
+        // フェーズ2: ウィンドウの物理配置適用
+        // タイリング中フラグ
+        windowManager.setTilingInProgress(true)
+
+        // フォーカスするウィンドウの AXUIElement
+        var axWindowToFocus: AXUIElement? = nil
+        var appliedFrames: [(id: String, frame: CGRect)] = []
+        var appliedIdealSizes: [(id: String, size: CGSize)] = []
+
+        for (si, _) in screenGroups.enumerated() {
+            guard let activeGroup = activeGroups[si], !activeGroup.isEmpty else { continue }
+            let mainCount = screenMainCounts[si] ?? 1
+            
             let screen = screens[si]
             let screenAXFrame = screenManager.visibleFrameInAX(for: screen)
-            Log.info(Self.tag, "  Screen[\(si)] \(sortedGroup.count)枚 AXFrame=\(screenAXFrame)")
+            Log.info(Self.tag, "  Screen[\(si)] \(activeGroup.count)枚 AXFrame=\(screenAXFrame)")
 
-            let idealFrames = activeLayout.calculateFrames(windowCount: sortedGroup.count, screenFrame: screenAXFrame)
+            let idealFrames = activeLayout.calculateFrames(windowCount: activeGroup.count, screenFrame: screenAXFrame)
 
-            // 左右サイドバー of 配置 Y 座標の追跡
+            // 左右サイドバーの Y 座標追跡
             var currentLeftY = screenAXFrame.minY + gap.outer
             var currentRightY = screenAXFrame.minY + gap.outer
 
-            // 実際のメインウィンドウの配置結果から決定される左右サイドバー of X 座標と幅
             var actualLeftX: CGFloat? = nil
             var actualLeftW: CGFloat? = nil
             var actualRightX: CGFloat? = nil
             var actualRightW: CGFloat? = nil
 
-            for (i, window) in sortedGroup.enumerated() {
+            for (i, window) in activeGroup.enumerated() {
                 guard let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) else {
                     Log.error(Self.tag, "    ⚠️ AXウィンドウが見つかりません pid=\(window.pid) title=\(window.title)")
                     continue
                 }
 
-                // 必要なら最小化を解除（ユーザーが手動で最小化していた場合などに備えて）
                 if AccessibilityHelper.isMinimized(axWindow) {
                     Log.info(Self.tag, "    → 最小化を解除: \"\(window.appName)\"")
                     AccessibilityHelper.restore(window: axWindow)
@@ -430,7 +444,6 @@ final class FocusModeController {
                     let idealFrame = idealFrames[min(i, idealFrames.count - 1)]
 
                     // 前回の実際の高さが、前回の理想の高さより大きい場合、それをこのウィンドウの最小高さ制限とみなす
-                    // （ただし画面外退避されていた時の 200px は除外する。またリサイズ失敗したウィンドウも除外する）
                     let lastH = window.frame.height
                     let minH: CGFloat
                     if window.isResizeFailed {
@@ -537,7 +550,7 @@ final class FocusModeController {
             }
         }
 
-        // ManagedWindow.frame を配置後の値で更新（次回 screenIndex が stale フレームを使わないように）
+        // ManagedWindow.frame を配置後の値で更新
         windowManager.updateFrames(appliedFrames)
         windowManager.updateLastIdealSizes(appliedIdealSizes)
         Log.debug(Self.tag, "  ManagedWindow.frame 更新: \(appliedFrames.count)件")
