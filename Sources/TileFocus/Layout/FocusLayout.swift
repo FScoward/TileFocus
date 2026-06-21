@@ -175,10 +175,18 @@ struct FocusLayout: Layout {
                 }
             }
 
+            // 最小幅を 260px に保証する
+            let minSideWidth: CGFloat = 260
             let mainTotalW = (totalW - inner * 2) * splitMainWidthRatio
-            let mainEachW = (mainTotalW - inner) / 2
             let remainingW = (totalW - inner * 2) - mainTotalW
-            let sideW = remainingW / 2
+            var sideW = remainingW / 2
+            
+            if sideW < minSideWidth {
+                sideW = minSideWidth
+            }
+            
+            let actualMainTotalW = totalW - inner * 2 - sideW * 2
+            let mainEachW = max(100, (actualMainTotalW - inner) / 2)
 
             let leftX = startX
             let centerLeftX = startX + sideW + inner
