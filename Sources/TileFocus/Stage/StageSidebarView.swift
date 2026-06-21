@@ -185,6 +185,8 @@ struct StageTopBarView: View {
     @State private var hoveredWindowID: String?
     @State private var draggedWindow: ManagedWindow?
     @State private var tempWindows: [ManagedWindow] = []
+    private let overlayManager = LayoutOverlayManager()
+
 
     /// このスクリーンに所属するすべてのウィンドウ（表示中 + 格納中）
     /// 王冠（フォーカスウィンドウ）を常に先頭にし、残りはユーザー定義のカスタムオーダー（無ければアプリ名・タイトル順）でソートします
@@ -357,6 +359,28 @@ struct StageTopBarView: View {
                 tempWindows = newValue
             }
         }
+        .onChange(of: draggedWindow) { newValue in
+            if let _ = newValue {
+                overlayManager.showOverlays(for: tempWindows, screen: screen, focusedID: windowManager.focusedWindowID)
+            } else {
+                overlayManager.hideOverlays()
+            }
+        }
+        .onChange(of: tempWindows) { newValue in
+            if draggedWindow != nil {
+                overlayManager.showOverlays(for: newValue, screen: screen, focusedID: windowManager.focusedWindowID)
+            }
+        }
+        .onChange(of: windowManager.isStagedWindowsBarExpanded) { expanded in
+            if !expanded {
+                overlayManager.hideOverlays()
+                draggedWindow = nil
+            }
+        }
+        .onDisappear {
+            overlayManager.hideOverlays()
+            draggedWindow = nil
+        }
     }
 
     @ViewBuilder
@@ -517,4 +541,87 @@ struct WindowDropDelegate: DropDelegate {
         return DropProposal(operation: .move)
     }
 }
+
+// MARK: - Layout Window Overlay
+
+class WindowNumberOverlayPanel: NSPanel {
+    init(frame: NSRect, number: Int) {
+        super.init(
+            contentRect: frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        self.level = .floating
+        self.isOpaque = false
+        self.backgroundColor = .clear
+        self.hasShadow = false
+        self.ignoresMouseEvents = true
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+
+        let hosting = NSHostingView(rootView: OverlayNumberView(number: number))
+        hosting.frame = CGRect(x: 0, y: 0, width: frame.width, height: frame.height)
+        hosting.autoresizingMask = [.width, .height]
+        self.contentView = hosting
+    }
+}
+
+struct OverlayNumberView: View {
+    let number: Int
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.black.opacity(0.65))
+                .frame(width: 80, height: 80)
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.85), lineWidth: 3)
+                )
+                .shadow(color: .black.opacity(0.3), radius: 6, x: 0, y: 3)
+            
+            Text("\(number)")
+                .font(.system(size: 44, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+@MainActor
+class LayoutOverlayManager {
+    private var overlayPanels: [WindowNumberOverlayPanel] = []
+    private let screenManager = ScreenManager()
+
+    func showOverlays(for windows: [ManagedWindow], screen: NSScreen, focusedID: String?) {
+        hideOverlays()
+
+        for (index, window) in windows.enumerated() {
+            let windowFrame = window.frameBeforeStaging ?? window.frame
+            
+            // 対象スクリーンにあるウィンドウのみ表示する
+            let winScreen = screenManager.screen(containingAXFrame: windowFrame)
+            guard winScreen == screen else { continue }
+            
+            let cocoaFrame = screenManager.axToAppKit(windowFrame)
+
+            // ウィンドウの中央に配置
+            let panelSize: CGFloat = 120
+            let centerX = cocoaFrame.midX - panelSize / 2
+            let centerY = cocoaFrame.midY - panelSize / 2
+            let panelFrame = CGRect(x: centerX, y: centerY, width: panelSize, height: panelSize)
+
+            let panel = WindowNumberOverlayPanel(frame: panelFrame, number: index + 1)
+            overlayPanels.append(panel)
+            panel.orderFrontRegardless()
+        }
+    }
+
+    func hideOverlays() {
+        for panel in overlayPanels {
+            panel.orderOut(nil)
+        }
+        overlayPanels.removeAll()
+    }
+}
+
 
