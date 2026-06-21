@@ -329,10 +329,12 @@ final class FocusModeController {
                 var isLeftWindow = false
                 var isRightWindow = false
 
-                if i == 0 {
+                let isMain = (i == 0) || (i == 1 && currentStyle == .splitCentered)
+
+                if isMain {
                     // MAIN ウィンドウは常に理想通りのサイズで配置
-                    targetFrame = idealFrames[0]
-                    role = "MAIN"
+                    targetFrame = idealFrames[min(i, idealFrames.count - 1)]
+                    role = i == 0 ? "MAIN_L" : "MAIN_R"
                 } else {
                     // SIDE ウィンドウ
                     let idealFrame = idealFrames[min(i, idealFrames.count - 1)]
@@ -357,6 +359,8 @@ final class FocusModeController {
                         isLeft = false
                     case .rightMain:
                         isLeft = true
+                    case .splitCentered:
+                        isLeft = ((i - 2) % 2 == 0)
                     }
                     
                     let currentY = isLeft ? currentLeftY : currentRightY
@@ -401,18 +405,25 @@ final class FocusModeController {
                 appliedFrames.append((id: window.id, frame: actualFrame))
 
                 // 今回指定した理想サイズを記録
-                let idealSz = (i == 0) ? idealFrames[0].size : idealFrames[min(i, idealFrames.count - 1)].size
+                let idealSz = idealFrames[min(i, idealFrames.count - 1)].size
                 appliedIdealSizes.append((id: window.id, size: idealSz))
 
                 if i == 0 {
-                    // MAIN の実際の配置結果から、左右サイドバーの X 座標と幅を決定
-                    // 左サイドバー
+                    // 左側サイドバーの幅決定（通常のメイン、または2分割メインの左側）
                     let leftX = screenAXFrame.minX + gap.outer
                     let leftMaxX = actualFrame.minX - gap.inner
                     actualLeftX = leftX
                     actualLeftW = max(100, leftMaxX - leftX)
-
-                    // 右サイドバー
+                    
+                    // splitCentered 以外の場合は、i == 0 の右端が右サイドバーの左端になる
+                    if currentStyle != .splitCentered {
+                        let rightX = actualFrame.maxX + gap.inner
+                        let screenMaxX = screenAXFrame.minX + screenAXFrame.width - gap.outer
+                        actualRightX = rightX
+                        actualRightW = max(100, screenMaxX - rightX)
+                    }
+                } else if i == 1 && currentStyle == .splitCentered {
+                    // splitCentered の場合のみ、i == 1（中央メイン右側）の右端が右サイドバーの左端になる
                     let rightX = actualFrame.maxX + gap.inner
                     let screenMaxX = screenAXFrame.minX + screenAXFrame.width - gap.outer
                     actualRightX = rightX
