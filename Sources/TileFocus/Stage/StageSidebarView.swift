@@ -57,7 +57,7 @@ class StageTopBarPanel: NSPanel {
 final class StageTopBarController: NSObject {
     private var panels: [NSScreen: StageTopBarPanel] = [:]
     
-    private let barWidth: CGFloat = 600
+    private let barWidth: CGFloat = 660 // ボタンが大きくなったため幅を少し広げる (600 -> 660)
     private let barHeight: CGFloat = 64
     private let visibleOffset: CGFloat = 8 // 隠れている時に画面内に露出させるピクセル数（ホバー検知用）
     
@@ -212,65 +212,98 @@ struct StageTopBarView: View {
 
     @ViewBuilder
     private func windowItem(_ window: ManagedWindow) -> some View {
-        // 現在格納（Staged）状態にあるかどうかを判定
         let isStaged = windowManager.stagedWindows.contains(where: { $0.id == window.id })
+        // 現在フォーカス（メイン）されているかどうか
+        let isMaster = windowManager.focusedWindowID == window.id
         
-        Button {
-            if isStaged {
-                windowManager.unstageWindow(window)
-            } else {
-                windowManager.stageWindow(window)
-            }
-        } label: {
-            HStack(spacing: 6) {
-                // アプリアイコンの代用
-                ZStack {
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(isStaged ? Color.secondary.opacity(0.15) : Color.accentColor.opacity(0.15))
-                    Text(String(window.appName.prefix(1)))
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(isStaged ? Color.secondary : Color.accentColor)
+        HStack(spacing: 4) {
+            // 1. 左側: 表示/非表示トグルボタン
+            Button {
+                if isStaged {
+                    windowManager.unstageWindow(window)
+                } else {
+                    // もし現在メインのウィンドウを非表示にする場合、かつ他のウィンドウがあれば、
+                    // メインが消失するので自動的に別のメインが選ばれるようにする
+                    windowManager.stageWindow(window)
                 }
-                .frame(width: 20, height: 20)
-
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(window.appName)
-                        .font(.system(size: 11, weight: isStaged ? .regular : .semibold))
-                        .foregroundStyle(isStaged ? .secondary : .primary)
-                        .lineLimit(1)
-                    if !window.title.isEmpty && window.title != window.appName {
-                        Text(window.title)
-                            .font(.system(size: 8))
-                            .foregroundStyle(isStaged ? .tertiary : .secondary)
-                            .lineLimit(1)
+            } label: {
+                HStack(spacing: 6) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(isStaged ? Color.secondary.opacity(0.15) : Color.accentColor.opacity(0.15))
+                        Text(String(window.appName.prefix(1)))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(isStaged ? Color.secondary : Color.accentColor)
                     }
+                    .frame(width: 20, height: 20)
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(window.appName)
+                            .font(.system(size: 11, weight: isStaged ? .regular : .semibold))
+                            .foregroundStyle(isStaged ? .secondary : .primary)
+                            .lineLimit(1)
+                        if !window.title.isEmpty && window.title != window.appName {
+                            Text(window.title)
+                                .font(.system(size: 8))
+                                .foregroundStyle(isStaged ? .tertiary : .secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(width: 80, alignment: .leading)
+                    
+                    Image(systemName: isStaged ? "eye.slash" : "eye.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(isStaged ? Color.secondary.opacity(0.5) : Color.accentColor)
                 }
-                .frame(width: 90, alignment: .leading)
-                
-                // 表示/非表示状態を示すアイコングラフィック
-                Image(systemName: isStaged ? "eye.slash" : "eye.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(isStaged ? Color.secondary.opacity(0.5) : Color.accentColor)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(
+                            hoveredWindowID == window.id
+                            ? (isStaged ? Color.secondary.opacity(0.12) : Color.accentColor.opacity(0.15))
+                            : (isStaged ? Color.clear : Color.accentColor.opacity(0.06))
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(isStaged ? Color.clear : Color.accentColor.opacity(0.25), lineWidth: 1)
+                )
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(
-                        hoveredWindowID == window.id
-                        ? (isStaged ? Color.secondary.opacity(0.12) : Color.accentColor.opacity(0.15))
-                        : (isStaged ? Color.clear : Color.accentColor.opacity(0.06))
+            .buttonStyle(.plain)
+            .onHover { hovering in
+                hoveredWindowID = hovering ? window.id : nil
+            }
+
+            // 2. 右側: メイン（マスター）に設定する王冠ボタン
+            Button {
+                if isStaged {
+                    // 格納されている場合は、まず画面上に復帰させてからメインにする
+                    windowManager.unstageWindow(window)
+                }
+                windowManager.switchFocusedWindow(to: window.id)
+            } label: {
+                Image(systemName: isMaster ? "crown.fill" : "crown")
+                    .font(.system(size: 11))
+                    .foregroundStyle(isMaster ? Color.yellow : Color.secondary.opacity(0.4))
+                    .frame(width: 22, height: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(isMaster ? Color.yellow.opacity(0.15) : Color.clear)
                     )
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(isStaged ? Color.clear : Color.accentColor.opacity(0.25), lineWidth: 1)
-            )
+            }
+            .buttonStyle(.plain)
+            .help("このウィンドウをメインに設定")
         }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            hoveredWindowID = hovering ? window.id : nil
-        }
-        .animation(.easeInOut(duration: 0.15), value: hoveredWindowID)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isMaster ? Color.yellow.opacity(0.06) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isMaster ? Color.yellow.opacity(0.3) : Color.clear, lineWidth: 1)
+        )
     }
 }
