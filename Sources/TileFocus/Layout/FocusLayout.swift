@@ -22,7 +22,9 @@ struct FocusLayout: Layout {
     }
 
     /// 中央2分割レイアウトの際のメインウィンドウの合計幅比率（全体の何 %）
-    var splitMainWidthRatio: CGFloat = 0.70
+    var splitMainWidthRatio: CGFloat {
+        CGFloat(AppSettings.shared.mainWidthRatio)
+    }
 
     /// サイドバーの 1 ウィンドウあたりの最小高さ（px）
     /// これを下回る場合はウィンドウを表示しない（truncate）
