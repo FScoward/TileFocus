@@ -8,7 +8,7 @@ import HotKey
 /// - ⌃⌘T  : Tiling Mode ON/OFF
 /// - ⌃⌘F  : Focus Mode ON/OFF
 /// - ⌃⌘M  : フロントウィンドウをマスターに是抜
-/// - ⌃⌘S  : Stage Mode ON/OFF
+/// - ⌃⌘S  : フォーカス中のウィンドウを格納
 /// - ⌃⌘R  : 格納ウィンドウを全復帰
 /// - ⌃⌘→ : 次のレイアウトプリセット
 /// - ⌃⌘← : 前のレイアウトプリセット
@@ -43,10 +43,10 @@ final class HotKeyManager {
             Task { @MainActor in self?.windowManager?.switchMode(to: .focus) }
         }
 
-        // Stage Mode ON/OFF: Cmd+Ctrl+S
+        // フォーカス中のウィンドウを格納: Cmd+Ctrl+S
         let stageHK = HotKey(key: Key.s, modifiers: NSEvent.ModifierFlags([.command, .control]))
         stageHK.keyDownHandler = { [weak self] in
-            Task { @MainActor in self?.windowManager?.switchMode(to: .stage) }
+            Task { @MainActor in self?.windowManager?.stageFocusedWindow() }
         }
 
         // 全格納ウィンドウを復帰: Cmd+Ctrl+R

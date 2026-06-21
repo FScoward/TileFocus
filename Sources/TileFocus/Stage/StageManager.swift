@@ -56,6 +56,8 @@ final class StageManager {
         // タイリング中なら残りのウィンドウを再タイリング
         if windowManager.currentMode == .tiling {
             windowManager.requestRetile()
+        } else if windowManager.currentMode == .focus {
+            windowManager.requestFocusLayoutUpdate()
         }
     }
 
@@ -100,6 +102,8 @@ final class StageManager {
         // タイリング中なら全体を再タイリング
         if windowManager.currentMode == .tiling {
             windowManager.requestRetile()
+        } else if windowManager.currentMode == .focus {
+            windowManager.requestFocusLayoutUpdate()
         }
 
         print("[StageManager] 復帰: \(window.appName) - \(window.title)")

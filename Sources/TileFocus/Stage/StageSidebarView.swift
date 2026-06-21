@@ -126,11 +126,7 @@ struct StageSidebarView: View {
     @ViewBuilder
     private func stagedWindowRow(_ window: ManagedWindow) -> some View {
         Button {
-            if windowManager.currentMode == .stage {
-                windowManager.switchStageActiveWindow(to: window.id)
-            } else {
-                windowManager.unstageWindow(window)
-            }
+            windowManager.unstageWindow(window)
         } label: {
             HStack(spacing: 8) {
                 // アプリアイコン（アプリ名の頭文字を代替表示）

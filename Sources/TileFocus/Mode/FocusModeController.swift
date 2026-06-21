@@ -12,6 +12,7 @@ final class FocusModeController {
     private weak var windowManager: WindowManager?
     private let screenManager = ScreenManager()
     private let layout = FocusLayout()
+    private let sidebarController = StageSidebarController()
 
     // MARK: - State
 
@@ -33,6 +34,12 @@ final class FocusModeController {
 
     func activate() {
         Log.info(Self.tag, "activate() 開始")
+        
+        // 全モニターにサイドバーを表示
+        if let windowManager {
+            sidebarController.show(windowManager: windowManager)
+        }
+
         updateFocusedWindow()
         applyLayout()
 
@@ -67,6 +74,15 @@ final class FocusModeController {
             NSWorkspace.shared.notificationCenter.removeObserver(token)
         }
         workspaceObservers = []
+        
+        // サイドバーを非表示にする
+        sidebarController.hide()
+        
+        // すべての格納ウィンドウを画面上に復帰させる
+        if let windowManager {
+            windowManager.unstageAllWindows()
+        }
+
         focusedWindowID = nil
         masterWindowID = nil
     }

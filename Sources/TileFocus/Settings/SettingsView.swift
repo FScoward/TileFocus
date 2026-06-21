@@ -45,8 +45,8 @@ private struct GeneralSettingsTab: View {
                 .pickerStyle(.segmented)
             }
 
-            Section("Stage Mode") {
-                Picker("ウィンドウ格納方法", selection: $settings.stageMethod) {
+            Section("ウィンドウ格納 (Focus Mode)") {
+                Picker("格納方法", selection: $settings.stageMethod) {
                     ForEach(StageMethod.allCases) { method in
                         Text(method.displayName).tag(method)
                     }
@@ -106,7 +106,7 @@ private struct HotKeySettingsTab: View {
     private let hotKeys: [(String, String)] = [
         ("Tiling Mode ON/OFF", "⌃⌘T"),
         ("Focus Mode ON/OFF", "⌃⌘F"),
-        ("Stage Mode ON/OFF", "⌃⌘S"),
+        ("フォーカス中のウィンドウを格納", "⌃⌘S"),
         ("格納ウィンドウを全復帰", "⌃⌘R"),
         ("次のレイアウト", "⌃⌘→"),
         ("前のレイアウト", "⌃⌘←")
