@@ -198,8 +198,23 @@ enum AccessibilityHelper {
         }
         
         let afterFrame = getFrame(of: window)
-        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(success) isExpanding=\(isExpanding) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrame) afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
-        return success
+        let actualSuccess: Bool
+        if success, let after = afterFrame {
+            // アプリケーション固有の最小サイズ制限等で、要求サイズと実際のサイズが異なる場合は失敗とみなす（許容誤差10px）
+            let widthDiff = abs(after.width - size.width)
+            let heightDiff = abs(after.height - size.height)
+            if widthDiff > 10 || heightDiff > 10 {
+                Log.warn(tag, "  ⚠️ リサイズ要求サイズと実際のサイズが一致しません（最小サイズ制限の可能性）: 要求=\(size) 実際=\(after.size) (差: w=\(widthDiff) h=\(heightDiff))")
+                actualSuccess = false
+            } else {
+                actualSuccess = true
+            }
+        } else {
+            actualSuccess = success
+        }
+        
+        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(actualSuccess) isExpanding=\(isExpanding) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrame) afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
+        return actualSuccess
     }
 
     /// ウィンドウを指定フレームに即時移動・リサイズ
