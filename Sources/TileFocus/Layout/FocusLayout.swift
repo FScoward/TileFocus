@@ -26,16 +26,11 @@ struct FocusLayout: Layout {
     func calculateFrames(windowCount: Int, screenFrame: CGRect) -> [CGRect] {
         guard windowCount > 0 else { return [] }
 
-        // 左側のサイドバー幅（StageSidebarView）を考慮して、タイリング領域を右にずらす
-        let sidebarWidth: CGFloat = 180
-        let adjustedMinX = screenFrame.minX + sidebarWidth
-        let adjustedWidth = screenFrame.width - sidebarWidth
-
         let outer = gap.outer
         let inner = gap.inner
-        let totalW = adjustedWidth  - outer * 2
+        let totalW = screenFrame.width  - outer * 2
         let totalH = screenFrame.height - outer * 2
-        let startX = adjustedMinX + outer
+        let startX = screenFrame.minX + outer
         let startY = screenFrame.minY + outer
 
         if windowCount == 1 {

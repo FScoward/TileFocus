@@ -1,76 +1,120 @@
 import SwiftUI
 import AppKit
 
-/// 画面左端に表示するフローティングサイドバー（格納ウィンドウ一覧）
-///
-/// 各モニター（NSScreen）の左端に NSPanel を使って常時表示する
-final class StageSidebarController: NSObject {
+/// 画面上部に表示するホバー式のフローティングバー（格納ウィンドウ一覧）
+class StageTopBarPanel: NSPanel {
+    private var trackingArea: NSTrackingArea?
+    var onMouseEnter: (() -> Void)?
+    var onMouseExit: (() -> Void)?
 
-    private var panels: [NSScreen: NSPanel] = [:]
+    init(contentRect: NSRect) {
+        super.init(
+            contentRect: contentRect,
+            styleMask: [.nonactivatingPanel, .fullSizeContentView, .borderless],
+            backing: .buffered,
+            defer: false
+        )
+        self.level = .floating
+        self.isOpaque = false
+        self.backgroundColor = .clear
+        self.hasShadow = true
+        self.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
+        
+        setupTrackingArea()
+    }
 
-    /// 全モニターにサイドバーを表示する
+    private func setupTrackingArea() {
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .activeAlways, .inVisibleRect]
+        let area = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
+        contentView?.addTrackingArea(area)
+        self.trackingArea = area
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onMouseEnter?()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onMouseExit?()
+    }
+}
+
+// MARK: - StageTopBarController
+
+final class StageTopBarController: NSObject {
+    private var panels: [NSScreen: StageTopBarPanel] = [:]
+    
+    private let barWidth: CGFloat = 600
+    private let barHeight: CGFloat = 64
+    
     @MainActor
     func show(windowManager: WindowManager) {
-        hide() // 既存のサイドバーを一度クリーンアップ
+        hide() // 既存のパネルをクリア
 
         for screen in NSScreen.screens {
             let screenFrame = screen.visibleFrame
-
-            let sidebarWidth: CGFloat = 180
-            let sidebarHeight = screenFrame.height * 0.6
-            let sidebarY = screenFrame.minY + (screenFrame.height - sidebarHeight) / 2
-
-            let panelFrame = CGRect(
-                x: screenFrame.minX,
-                y: sidebarY,
-                width: sidebarWidth,
-                height: sidebarHeight
-            )
-
-            let panel = NSPanel(
-                contentRect: panelFrame,
-                styleMask: [.nonactivatingPanel, .fullSizeContentView, .borderless],
-                backing: .buffered,
-                defer: false
-            )
-            panel.level = .floating
-            panel.isOpaque = false
-            panel.backgroundColor = .clear
-            panel.hasShadow = true
-            panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .ignoresCycle]
-
-            let sidebarView = StageSidebarView(screen: screen)
+            
+            // 初期状態（折りたたまれた状態 = 上端に4pxだけ露出）
+            let initialX = screenFrame.minX + (screenFrame.width - barWidth) / 2
+            let initialY = screenFrame.maxY - 4
+            let panelFrame = CGRect(x: initialX, y: initialY, width: barWidth, height: barHeight)
+            
+            let panel = StageTopBarPanel(contentRect: panelFrame)
+            
+            let topBarView = StageTopBarView(screen: screen)
                 .environmentObject(windowManager)
-            let hosting = NSHostingView(rootView: sidebarView)
+            let hosting = NSHostingView(rootView: topBarView)
             panel.contentView = hosting
-
+            
+            // ホバーイベントの紐付け
+            panel.onMouseEnter = { [weak self, weak panel] in
+                guard let self, let panel else { return }
+                self.updatePanelCollapseState(collapsed: false, panel: panel, screen: screen)
+            }
+            
+            panel.onMouseExit = { [weak self, weak panel] in
+                guard let self, let panel else { return }
+                self.updatePanelCollapseState(collapsed: true, panel: panel, screen: screen)
+            }
+            
             panels[screen] = panel
             panel.orderFrontRegardless()
         }
     }
-
-    /// すべてのサイドバーを非表示にする
+    
     func hide() {
         for panel in panels.values {
             panel.orderOut(nil)
         }
         panels.removeAll()
     }
+    
+    @MainActor
+    private func updatePanelCollapseState(collapsed: Bool, panel: StageTopBarPanel, screen: NSScreen) {
+        let screenFrame = screen.visibleFrame
+        let x = screenFrame.minX + (screenFrame.width - barWidth) / 2
+        let y = collapsed ? (screenFrame.maxY - 4) : (screenFrame.maxY - barHeight)
+        
+        let targetFrame = CGRect(x: x, y: y, width: barWidth, height: barHeight)
+        
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().setFrame(targetFrame, display: true)
+        }
+    }
 }
 
-// MARK: - StageSidebarView (SwiftUI)
+// MARK: - StageTopBarView (SwiftUI)
 
-/// サイドバーのコンテンツ（SwiftUI）
-struct StageSidebarView: View {
+struct StageTopBarView: View {
     @EnvironmentObject private var windowManager: WindowManager
     let screen: NSScreen
     @State private var hoveredWindowID: String?
 
-    /// このスクリーンに所属する格納ウィンドウ
     private var stagedWindowsForScreen: [ManagedWindow] {
         let screenManager = ScreenManager()
         return windowManager.stagedWindows.filter { window in
-            // 格納前のフレーム（なければ現在のフレーム）を用いて所属スクリーンを判定
             let frame = window.frameBeforeStaging ?? window.frame
             let winScreen = screenManager.screen(containingAXFrame: frame)
             return winScreen == screen
@@ -78,89 +122,79 @@ struct StageSidebarView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // ヘッダー
-            HStack {
-                Image(systemName: "sidebar.left")
-                    .foregroundStyle(.secondary)
-                Text("格納中")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-
-            Divider()
-                .opacity(0.5)
-
-            ScrollView {
-                LazyVStack(spacing: 4) {
-                    ForEach(stagedWindowsForScreen) { window in
-                        stagedWindowRow(window)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                if stagedWindowsForScreen.isEmpty {
+                    Spacer()
+                    Text("格納中のウィンドウはありません")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                } else {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(stagedWindowsForScreen) { window in
+                                stagedWindowItem(window)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
                     }
                 }
-                .padding(.vertical, 8)
-                .padding(.horizontal, 8)
             }
-
-            if stagedWindowsForScreen.isEmpty {
-                Spacer()
-                Text("格納なし")
-                    .font(.caption)
-                    .foregroundStyle(.quaternary)
-                    .frame(maxWidth: .infinity)
-                Spacer()
-            }
+            .frame(height: 58)
+            
+            // 下部中央のインジケーター（ホバー時のヒント）
+            RoundedRectangle(cornerRadius: 1)
+                .fill(Color.secondary.opacity(0.3))
+                .frame(width: 40, height: 2)
+                .padding(.bottom, 2)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.3), radius: 12, x: 2, y: 0)
+                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 3)
         )
         .clipShape(RoundedRectangle(cornerRadius: 12))
-        .padding(.leading, 4)
     }
 
     @ViewBuilder
-    private func stagedWindowRow(_ window: ManagedWindow) -> some View {
+    private func stagedWindowItem(_ window: ManagedWindow) -> some View {
         Button {
             windowManager.unstageWindow(window)
         } label: {
-            HStack(spacing: 8) {
-                // アプリアイコン（アプリ名の頭文字を代替表示）
+            HStack(spacing: 6) {
+                // アプリアイコンの代用
                 ZStack {
-                    RoundedRectangle(cornerRadius: 6)
+                    RoundedRectangle(cornerRadius: 5)
                         .fill(Color.accentColor.opacity(0.15))
                     Text(String(window.appName.prefix(1)))
-                        .font(.caption)
-                        .fontWeight(.bold)
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(Color.accentColor)
                 }
-                .frame(width: 28, height: 28)
+                .frame(width: 20, height: 20)
 
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text(window.appName)
-                        .font(.caption)
-                        .fontWeight(.semibold)
+                        .font(.system(size: 11, weight: .medium))
                         .lineLimit(1)
                     if !window.title.isEmpty && window.title != window.appName {
                         Text(window.title)
-                            .font(.caption2)
+                            .font(.system(size: 8))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
                 }
-                Spacer(minLength: 0)
+                .frame(width: 90, alignment: .leading)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
             .background(
-                RoundedRectangle(cornerRadius: 8)
+                RoundedRectangle(cornerRadius: 6)
                     .fill(hoveredWindowID == window.id
                           ? Color.accentColor.opacity(0.12)
-                          : Color.clear)
+                          : Color.secondary.opacity(0.05))
             )
         }
         .buttonStyle(.plain)
