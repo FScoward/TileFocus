@@ -17,7 +17,9 @@ struct FocusLayout: Layout {
     var gap: TilingGap = TilingGap(outer: 8, inner: 6)
 
     /// メインウィンドウの幅比率（全体の何 %）
-    var mainWidthRatio: CGFloat = 0.55
+    var mainWidthRatio: CGFloat {
+        CGFloat(AppSettings.shared.mainWidthRatio)
+    }
 
     /// 中央2分割レイアウトの際のメインウィンドウの合計幅比率（全体の何 %）
     var splitMainWidthRatio: CGFloat = 0.70

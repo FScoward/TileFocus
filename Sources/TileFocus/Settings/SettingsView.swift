@@ -48,9 +48,25 @@ private struct GeneralSettingsTab: View {
                     }
                 }
             }
+
+            Section("レイアウト (Focus Mode)") {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("メインウィンドウの幅比率")
+                        Spacer()
+                        Text("\(Int(settings.mainWidthRatio * 100))%")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $settings.mainWidthRatio, in: 0.3...0.8, step: 0.05)
+                }
+            }
         }
         .formStyle(.grouped)
         .padding()
+        .onChange(of: settings.mainWidthRatio) { _ in
+            WindowManager.shared.requestFocusLayoutUpdate()
+        }
     }
 }
 

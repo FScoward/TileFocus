@@ -30,6 +30,7 @@ final class AppSettings: ObservableObject {
         static let defaultLayoutIndex = "defaultLayoutIndex"
         static let launchAtLogin = "launchAtLogin"
         static let stageMethod = "stageMethod"
+        static let mainWidthRatio = "mainWidthRatio"
     }
 
     // MARK: - Settings
@@ -37,6 +38,11 @@ final class AppSettings: ObservableObject {
     /// 起動時のモード
     @Published var defaultMode: AppMode {
         didSet { defaults.set(defaultMode.rawValue, forKey: Keys.defaultMode) }
+    }
+
+    /// Focus Modeでのメインウィンドウの幅比率
+    @Published var mainWidthRatio: Double {
+        didSet { defaults.set(mainWidthRatio, forKey: Keys.mainWidthRatio) }
     }
 
     /// 格納方法
@@ -62,6 +68,9 @@ final class AppSettings: ObservableObject {
     // MARK: - Init
 
     private init() {
+        let savedRatio = defaults.double(forKey: Keys.mainWidthRatio)
+        mainWidthRatio = savedRatio == 0 ? 0.55 : savedRatio
+
         defaultMode = AppMode(
             rawValue: defaults.string(forKey: Keys.defaultMode) ?? ""
         ) ?? .off
