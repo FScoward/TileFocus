@@ -553,6 +553,39 @@ struct StageTopBarView: View {
         let crownFg = isMaster ? Color.yellow : (isStaged ? Color.secondary.opacity(0.4) : Color.secondary.opacity(0.7))
         
         let isHovered = hoveredWindowID == window.id
+        
+        // ウィンドウの物理的な画面位置を判定
+        let positionLabel: String = {
+            if isStaged { return "格納" }
+            if isMaster { return "メイン" }
+            let screenFrame = screen.frame
+            let winFrame = window.frameBeforeStaging ?? window.frame
+            let winMidX = winFrame.midX
+            let screenMidX = screenFrame.midX
+            if winMidX < screenMidX - 50 {
+                return "左"
+            } else if winMidX > screenMidX + 50 {
+                return "右"
+            } else {
+                return "メイン"
+            }
+        }()
+        
+        let positionColor: Color = {
+            if isStaged { return Color.secondary }
+            if isMaster { return Color.orange }
+            let screenFrame = screen.frame
+            let winFrame = window.frameBeforeStaging ?? window.frame
+            let winMidX = winFrame.midX
+            let screenMidX = screenFrame.midX
+            if winMidX < screenMidX - 50 {
+                return Color.blue
+            } else if winMidX > screenMidX + 50 {
+                return Color.purple
+            } else {
+                return Color.orange
+            }
+        }()
 
         // --- リキッドグラス効果のためのグラデーション定義 ---
         let hoverGradient = LinearGradient(
@@ -619,6 +652,17 @@ struct StageTopBarView: View {
                     .font(.system(size: 10, weight: appNameWeight))
                     .foregroundStyle(appNameFg)
                     .lineLimit(1)
+                
+                // 位置インジケータバッジ
+                Text(positionLabel)
+                    .font(.system(size: 8, weight: .bold))
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 0.5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 3)
+                            .fill(positionColor.opacity(0.12))
+                    )
+                    .foregroundStyle(positionColor)
                 
                 Spacer(minLength: 0)
                 
