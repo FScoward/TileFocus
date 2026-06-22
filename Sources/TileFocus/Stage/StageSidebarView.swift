@@ -241,7 +241,7 @@ struct StageTopBarView: View {
 
 
     /// このスクリーンに所属するすべてのウィンドウ（表示中 + 格納中）
-    /// 王冠（マスターウィンドウ）を常に先頭にし、残りはユーザー定義のカスタムオーダー（無ければアプリ名・タイトル順）でソートします
+    /// 実際の画面上の物理的な配置（左から右）と表示順を一致させ、格納中ウィンドウは末尾に並べます
     private var allWindowsForScreen: [ManagedWindow] {
         let screenManager = ScreenManager()
         let all = windowManager.managedWindows + windowManager.stagedWindows
@@ -251,49 +251,29 @@ struct StageTopBarView: View {
             return winScreen == screen
         }
         
-        var result = filtered
-        if let masterID = windowManager.masterWindow?.id,
-           let masterIndex = result.firstIndex(where: { $0.id == masterID }) {
-            let master = result.remove(at: masterIndex)
-            let sortedOthers = result.sorted { w1, w2 in
-                let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
-                let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
-                
-                switch (idx1, idx2) {
-                case (.some(let i1), .some(let i2)):
-                    return i1 < i2
-                case (.some, .none):
-                    return true
-                case (.none, .some):
-                    return false
-                case (.none, .none):
-                    if w1.appName != w2.appName {
-                        return w1.appName < w2.appName
-                    }
-                    return w1.title < w2.title
-                }
-            }
-            return [master] + sortedOthers
-        } else {
-            return result.sorted { w1, w2 in
-                let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
-                let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
-                
-                switch (idx1, idx2) {
-                case (.some(let i1), .some(let i2)):
-                    return i1 < i2
-                case (.some, .none):
-                    return true
-                case (.none, .some):
-                    return false
-                case (.none, .none):
-                    if w1.appName != w2.appName {
-                        return w1.appName < w2.appName
-                    }
-                    return w1.title < w2.title
-                }
-            }
+        // 格納中（staged）のウィンドウと、表示中のウィンドウに分ける
+        let stagedWins = filtered.filter { window in
+            windowManager.stagedWindows.contains(where: { $0.id == window.id })
         }
+        let activeWins = filtered.filter { window in
+            !windowManager.stagedWindows.contains(where: { $0.id == window.id })
+        }
+        
+        // 表示中のウィンドウを実際の画面の X 座標（左から右）の順でソート
+        // X座標が同じ場合は Y 座標（上から下）の順でソートします
+        let sortedActive = activeWins.sorted { w1, w2 in
+            let f1 = w1.frameBeforeStaging ?? w1.frame
+            let f2 = w2.frameBeforeStaging ?? w2.frame
+            if abs(f1.minX - f2.minX) > 10 {
+                return f1.minX < f2.minX
+            }
+            return f1.minY < f2.minY
+        }
+        
+        // 格納中のウィンドウは末尾に名前順でソートして結合
+        let sortedStaged = stagedWins.sorted { $0.appName < $1.appName }
+        
+        return sortedActive + sortedStaged
     }
 
 
@@ -811,18 +791,46 @@ struct StageTopBarView: View {
                             tempWindows.insert(moving, at: targetIdx)
                         }
                         
+                        // 1. レイアウト上のマスター（王冠）のインデックスを計算する
+                        let focusStyle = windowManager.focusStyle(for: screen)
+                        let mainIndex: Int
+                        let totalSideCount = tempWindows.count - 1
+                        
+                        switch focusStyle {
+                        case .centered, .splitCentered:
+                            var leftCount = 0
+                            for i in 1...totalSideCount {
+                                if i % 2 == 1 { leftCount += 1 }
+                            }
+                            mainIndex = leftCount
+                        case .leftMain, .absoluteSplit2:
+                            mainIndex = 0
+                        case .rightMain:
+                            mainIndex = totalSideCount
+                        case .absoluteSplit3:
+                            mainIndex = (tempWindows.count >= 3) ? 1 : 0
+                        }
+                        
+                        let newMasterIndex = max(0, min(tempWindows.count - 1, mainIndex))
+                        let newMaster = tempWindows[newMasterIndex]
+                        
+                        // 2. マスターウィンドウ以外の並び順を作成
+                        var remainingWindows = tempWindows
+                        remainingWindows.remove(at: newMasterIndex)
+                        
                         let targetIDs = Set(tempWindows.map { $0.id })
                         var currentOrder = windowManager.customWindowOrder
                         
                         let insertIndex = currentOrder.firstIndex { targetIDs.contains($0) } ?? currentOrder.count
                         currentOrder.removeAll { targetIDs.contains($0) }
-                        currentOrder.insert(contentsOf: tempWindows.map { $0.id }, at: insertIndex)
                         
-                        if let newMaster = tempWindows.first {
-                            Log.info("StageTopBarView", "Switching master to newMaster: \(newMaster.appName) (\(newMaster.id))")
-                            windowManager.switchFocusedWindow(to: newMaster.id)
-                        }
+                        // 新しい順序として [newMaster] + [残りのウィンドウ] を customWindowOrder に保存
+                        let newOrderForThisScreen = [newMaster.id] + remainingWindows.map { $0.id }
+                        currentOrder.insert(contentsOf: newOrderForThisScreen, at: insertIndex)
                         
+                        // 先にマスターを適用し、その後に customWindowOrder を更新して順序競合を防ぐ
+                        Log.info("StageTopBarView", "Switching master to physical master: \(newMaster.appName) (\(newMaster.id)) at index \(newMasterIndex)")
+                        windowManager.switchFocusedWindow(to: newMaster.id)
                         windowManager.customWindowOrder = currentOrder
                     } else {
                         Log.info("StageTopBarView", "DragGesture ended without order change.")
