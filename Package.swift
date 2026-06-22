@@ -16,6 +16,11 @@ let package = Package(
                 .product(name: "HotKey", package: "HotKey")
             ],
             path: "Sources/TileFocus"
+        ),
+        .testTarget(
+            name: "TileFocusTests",
+            dependencies: ["TileFocus"],
+            path: "Tests/TileFocusTests"
         )
     ]
 )
