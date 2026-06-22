@@ -676,21 +676,17 @@ struct StageTopBarView: View {
         .opacity(isDragging ? 0.35 : 1.0)
 
 
-        if isMaster {
-            itemContent
-        } else {
-            itemContent
-                .onDrag {
-                    self.draggedWindow = window
-                    return NSItemProvider(item: window.id as NSString, typeIdentifier: UTType.text.identifier)
-                }
-                .onDrop(of: [UTType.text], delegate: WindowDropDelegate(
-                    item: window,
-                    tempWindows: $tempWindows,
-                    windowManager: windowManager,
-                    draggedItem: $draggedWindow
-                ))
-        }
+        itemContent
+            .onDrag {
+                self.draggedWindow = window
+                return NSItemProvider(item: window.id as NSString, typeIdentifier: UTType.text.identifier)
+            }
+            .onDrop(of: [UTType.text], delegate: WindowDropDelegate(
+                item: window,
+                tempWindows: $tempWindows,
+                windowManager: windowManager,
+                draggedItem: $draggedWindow
+            ))
     }
 }
 
@@ -706,14 +702,6 @@ struct WindowDropDelegate: DropDelegate {
 
         guard let fromIndex = tempWindows.firstIndex(where: { $0.id == draggedItem.id }),
               let toIndex = tempWindows.firstIndex(where: { $0.id == item.id }) else {
-            return
-        }
-
-        // 王冠（マスターウィンドウ）が関わる並べ替えは無視する（常に1番に固定）
-        let fromWindow = tempWindows[fromIndex]
-        let toWindow = tempWindows[toIndex]
-        let masterID = windowManager.masterWindow?.id
-        guard fromWindow.id != masterID && toWindow.id != masterID else {
             return
         }
 
@@ -734,6 +722,11 @@ struct WindowDropDelegate: DropDelegate {
         currentOrder.insert(contentsOf: tempWindows.map { $0.id }, at: insertIndex)
         
         windowManager.customWindowOrder = currentOrder
+        
+        // 先頭（インデックス0）に並べ替えられたウィンドウを新しいマスター（王冠）に設定
+        if let newMaster = tempWindows.first {
+            windowManager.switchFocusedWindow(to: newMaster.id)
+        }
         
         // customWindowOrder の変更が反映され、allWindowsForScreen が更新されるのを待ってから nil に戻すことで
         // 旧順序による onChange での tempWindows 上書きを防ぐ
