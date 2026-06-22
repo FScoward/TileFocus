@@ -192,10 +192,11 @@ final class FocusModeController {
             $0.pid == pid && ($0.title == title || title.isEmpty)
         }) ?? managed.first(where: { $0.pid == pid }) {
             
-            // ★ Shift キーが押されている場合は、フォーカス移動だけでなくマスター（王冠）にも設定する
-            let isShiftPressed = NSEvent.modifierFlags.contains(.shift)
-            if isShiftPressed {
-                Log.info(Self.tag, "handleFocusChanged: Shiftキー押下を検知。マスターに設定 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
+            // ★ Control + Option キーが押されている場合は、フォーカス移動だけでなくマスター（王冠）にも設定する
+            let flags = NSEvent.modifierFlags
+            let isCtrlOptionPressed = flags.contains(.control) && flags.contains(.option)
+            if isCtrlOptionPressed {
+                Log.info(Self.tag, "handleFocusChanged: Control+Optionキー押下を検知。マスターに設定 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
                 windowManager.setMasterWindow(to: match.id)
             } else {
                 if match.id != focusedWindowID {
