@@ -248,6 +248,25 @@ enum AccessibilityHelper {
         return windowID
     }
 
+    /// 現在のアクティブな操作スペース（仮想デスクトップ）上に表示されている CGWindowID セットを取得する
+    static func getActiveSpaceWindowIDs() -> Set<CGWindowID> {
+        guard let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]] else {
+            return []
+        }
+        
+        var ids = Set<CGWindowID>()
+        for info in windowList {
+            // 通常のアプリケーションウィンドウ（レイヤー0）のみを対象とする
+            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0 else {
+                continue
+            }
+            if let wID = info[kCGWindowNumber as String] as? CGWindowID {
+                ids.insert(wID)
+            }
+        }
+        return ids
+    }
+
     // MARK: - Minimize / Restore
 
     static func minimize(window: AXUIElement) {

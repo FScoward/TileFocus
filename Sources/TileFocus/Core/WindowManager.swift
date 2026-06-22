@@ -93,6 +93,7 @@ final class WindowManager: ObservableObject {
     private var stageManager: StageManager?
     private var windowObserver: WindowObserver?
     private var hotKeyManager: HotKeyManager?
+    private var workspaceObservers: [NSObjectProtocol] = []
 
     // MARK: - Init
 
@@ -130,6 +131,21 @@ final class WindowManager: ObservableObject {
         let hotKeyManager = HotKeyManager(windowManager: self)
         hotKeyManager.registerHotKeys()
         self.hotKeyManager = hotKeyManager
+
+        // 仮想デスクトップ（操作スペース）切り替えの監視
+        let spaceToken = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                Log.info("WindowManager", "仮想デスクトップの切り替えを検知しました。ウィンドウリストを再構成します。")
+                self.refreshWindowList()
+                self.triggerLayoutUpdate()
+            }
+        }
+        self.workspaceObservers = [spaceToken]
 
         // 現在実行中のウィンドウを取得
         refreshWindowList()
@@ -332,6 +348,7 @@ final class WindowManager: ObservableObject {
     ///
     /// 順序: フロントアプリのメインウィンドウ → その他のアプリのウィンドウ
     func refreshWindowList() {
+        let activeSpaceIDs = AccessibilityHelper.getActiveSpaceWindowIDs()
         let selfPid = ProcessInfo.processInfo.processIdentifier
         let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let running = NSWorkspace.shared.runningApplications
@@ -365,9 +382,12 @@ final class WindowManager: ObservableObject {
             }
 
             for axWindow in sortedWins {
+                let windowID = AccessibilityHelper.getWindowID(of: axWindow) ?? 0
+                // 現在アクティブな仮想スペース上に存在するウィンドウのみ対象とする
+                guard activeSpaceIDs.contains(windowID) else { continue }
+
                 guard let frame = AccessibilityHelper.getFrame(of: axWindow) else { continue }
                 let title = AccessibilityHelper.getTitle(of: axWindow) ?? ""
-                let windowID = AccessibilityHelper.getWindowID(of: axWindow) ?? 0
 
                 let managed = ManagedWindow(
                     pid: pid,
@@ -409,6 +429,9 @@ final class WindowManager: ObservableObject {
         guard window.pid != ProcessInfo.processInfo.processIdentifier else { return }
         // 最小サイズフィルタ
         guard window.frame.width >= 100 && window.frame.height >= 100 else { return }
+        // 現在アクティブな仮想スペース上に存在するかチェック
+        let activeSpaceIDs = AccessibilityHelper.getActiveSpaceWindowIDs()
+        guard activeSpaceIDs.contains(window.windowID) else { return }
 
         managedWindows.append(window)
         if currentMode == .tiling {
