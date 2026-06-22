@@ -140,4 +140,11 @@ extension NSScreen {
         }
         return localizedName
     }
+
+    var displayUUIDString: String? {
+        guard let dID = displayID else { return nil }
+        guard let uuidRef = CGDisplayCreateUUIDFromDisplayID(dID) else { return nil }
+        let cfUUID = uuidRef.takeRetainedValue()
+        return CFUUIDCreateString(nil, cfUUID) as String?
+    }
 }

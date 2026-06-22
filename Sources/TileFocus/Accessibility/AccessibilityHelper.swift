@@ -1,8 +1,16 @@
 import Foundation
 import AppKit
+import ApplicationServices
 
 @_silgen_name("_AXUIElementGetWindow")
 func _AXUIElementGetWindow(_ element: AXUIElement, _ identifier: inout CGWindowID) -> AXError
+
+// SkyLight.framework 内のプライベートAPI
+@_silgen_name("CGSMainConnectionID")
+func CGSMainConnectionID() -> Int32
+
+@_silgen_name("CGSCopyManagedDisplaySpaces")
+func CGSCopyManagedDisplaySpaces(_ connection: Int32) -> CFArray?
 
 /// AXUIElement API のラッパーユーティリティ
 /// ウィンドウの位置・サイズ取得/設定、タイトル取得、ウィンドウ列挙などを提供
@@ -265,6 +273,48 @@ enum AccessibilityHelper {
             }
         }
         return ids
+    }
+
+    /// 指定されたモニター（NSScreen）の、現在アクティブな仮想スペースの UUID を取得する
+    static func getActiveSpaceUUID(for screen: NSScreen) -> String? {
+        let connection = CGSMainConnectionID()
+        guard let displaySpaces = CGSCopyManagedDisplaySpaces(connection) as? [[String: Any]] else {
+            return nil
+        }
+        
+        // 1. ディスプレイの UUID 文字列を取得
+        guard let targetDisplayUUID = screen.displayUUIDString else {
+            // プライマリディスプレイ（displayID の UUID 取得失敗）のフォールバックとして、最初のディスプレイ情報を使う
+            if let firstDisplay = displaySpaces.first,
+               let currentSpace = firstDisplay["Current Space"] as? [String: Any],
+               let uuid = currentSpace["uuid"] as? String {
+                return uuid
+            }
+            return nil
+        }
+        
+        // 2. CGSCopyManagedDisplaySpaces の中から一致するディスプレイを探す
+        for displayInfo in displaySpaces {
+            guard let displayIDStr = displayInfo["Display Identifier"] as? String else {
+                continue
+            }
+            
+            if displayIDStr == targetDisplayUUID {
+                if let currentSpace = displayInfo["Current Space"] as? [String: Any],
+                   let uuid = currentSpace["uuid"] as? String {
+                    return uuid
+                }
+            }
+        }
+        
+        // 見つからない場合のフォールバック
+        if let firstDisplay = displaySpaces.first,
+           let currentSpace = firstDisplay["Current Space"] as? [String: Any],
+           let uuid = currentSpace["uuid"] as? String {
+            return uuid
+        }
+        
+        return nil
     }
 
     // MARK: - Minimize / Restore

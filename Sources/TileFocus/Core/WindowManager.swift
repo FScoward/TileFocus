@@ -50,19 +50,35 @@ final class WindowManager: ObservableObject {
         }
     }
 
-    /// 指定されたスクリーンの FocusStyle を取得する
+    /// 指定されたスクリーンの現在アクティブな仮想スペースに対応する FocusStyle を取得する
     func focusStyle(for screen: NSScreen) -> FocusStyle {
-        let key = screen.identifier
-        if let raw = AppSettings.shared.focusStylesByMonitor[key],
+        if let spaceUUID = AccessibilityHelper.getActiveSpaceUUID(for: screen) {
+            let key = spaceUUID
+            if let raw = AppSettings.shared.focusStylesByMonitor[key],
+               let style = FocusStyle(rawValue: raw) {
+                return style
+            }
+        }
+        
+        // 仮想スペースごとの設定が無い場合、従来のモニターIDキーでの設定をフォールバックとして試す
+        let monitorKey = screen.identifier
+        if let raw = AppSettings.shared.focusStylesByMonitor[monitorKey],
            let style = FocusStyle(rawValue: raw) {
             return style
         }
+        
         return focusStyle
     }
 
-    /// 指定されたスクリーンの FocusStyle を更新する
+    /// 指定されたスクリーンの現在アクティブな仮想スペースに対応する FocusStyle を更新する
     func setFocusStyle(_ style: FocusStyle, for screen: NSScreen) {
-        let key = screen.identifier
+        let key: String
+        if let spaceUUID = AccessibilityHelper.getActiveSpaceUUID(for: screen) {
+            key = spaceUUID
+        } else {
+            key = screen.identifier
+        }
+        
         var dict = AppSettings.shared.focusStylesByMonitor
         dict[key] = style.rawValue
         AppSettings.shared.focusStylesByMonitor = dict
