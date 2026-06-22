@@ -605,98 +605,90 @@ struct StageTopBarView: View {
         
         let itemContent = HStack(spacing: 2) {
             // 1. 左側: メイン（マスター）に設定するボタン（クリックのデフォルト動作）
-            Button {
+            HStack(spacing: 4) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(appLetterBg)
+                    Text(String(window.appName.prefix(1)))
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(appLetterFg)
+                }
+                .frame(width: 16, height: 16)
+
+                Text(window.appName)
+                    .font(.system(size: 10, weight: appNameWeight))
+                    .foregroundStyle(appNameFg)
+                    .lineLimit(1)
+                
+                Spacer(minLength: 0)
+                
+                // 状態を示す王冠アイコン
+                Image(systemName: isMaster ? "crown.fill" : "crown")
+                    .font(.system(size: 8))
+                    .foregroundStyle(crownFg)
+            }
+            .padding(.horizontal, 5)
+            .padding(.vertical, 4)
+            .background(
+                ZStack {
+                    // ガラスのすりガラス背景
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.ultraThinMaterial)
+                    
+                    // ホバー時・マスター時の有機的なリキッドグラデーション
+                    if isMaster {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(masterGradient)
+                    } else if isHovered {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(hoverGradient)
+                    } else {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(normalGradient)
+                    }
+                }
+            )
+            .overlay(
+                // ガラスの反射を感じさせるシャープなボーダー
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isMaster ? masterBorderGradient : borderGradient, lineWidth: 0.8)
+            )
+            .shadow(
+                color: isHovered ? (isMaster ? Color.yellow.opacity(0.12) : Color.purple.opacity(0.12)) : Color.clear,
+                radius: 3,
+                x: 0,
+                y: 1.5
+            )
+            .scaleEffect(isHovered ? 1.02 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.65, blendDuration: 0), value: isHovered)
+            .contentShape(Rectangle())
+            .onTapGesture {
                 if isStaged {
                     windowManager.unstageWindow(window)
                 }
-                
-                let isOptionPressed = NSEvent.modifierFlags.contains(.option)
-                if isOptionPressed {
-                    windowManager.setMasterWindow(to: window.id)
-                } else {
-                    windowManager.activateWindowWithoutChangingMaster(to: window.id)
-                }
-            } label: {
-                HStack(spacing: 4) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(appLetterBg)
-                        Text(String(window.appName.prefix(1)))
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(appLetterFg)
-                    }
-                    .frame(width: 16, height: 16)
-
-                    Text(window.appName)
-                        .font(.system(size: 10, weight: appNameWeight))
-                        .foregroundStyle(appNameFg)
-                        .lineLimit(1)
-                    
-                    Spacer(minLength: 0)
-                    
-                    // 状態を示す王冠アイコン
-                    Image(systemName: isMaster ? "crown.fill" : "crown")
-                        .font(.system(size: 8))
-                        .foregroundStyle(crownFg)
-                }
-                .padding(.horizontal, 5)
-                .padding(.vertical, 4)
-                .background(
-                    ZStack {
-                        // ガラスのすりガラス背景
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(.ultraThinMaterial)
-                        
-                        // ホバー時・マスター時の有機的なリキッドグラデーション
-                        if isMaster {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(masterGradient)
-                        } else if isHovered {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(hoverGradient)
-                        } else {
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(normalGradient)
-                        }
-                    }
-                )
-                .overlay(
-                    // ガラスの反射を感じさせるシャープなボーダー
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(isMaster ? masterBorderGradient : borderGradient, lineWidth: 0.8)
-                )
-                .shadow(
-                    color: isHovered ? (isMaster ? Color.yellow.opacity(0.12) : Color.purple.opacity(0.12)) : Color.clear,
-                    radius: 3,
-                    x: 0,
-                    y: 1.5
-                )
-                .scaleEffect(isHovered ? 1.02 : 1.0)
-                .animation(.spring(response: 0.22, dampingFraction: 0.65, blendDuration: 0), value: isHovered)
+                windowManager.setMasterWindow(to: window.id)
             }
-            .buttonStyle(.plain)
             .onHover { hovering in
                 hoveredWindowID = hovering ? window.id : nil
             }
 
             // 2. 右側: 表示/非表示トグルボタン（サブ）
-            Button {
-                if isStaged {
-                    windowManager.unstageWindow(window)
-                } else {
-                    windowManager.stageWindow(window)
+            Image(systemName: isStaged ? "eye.slash" : "eye.fill")
+                .font(.system(size: 9))
+                .foregroundStyle(isStaged ? Color.secondary.opacity(0.4) : Color.accentColor)
+                .frame(width: 18, height: 18)
+                .background(
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(isStaged ? Color.clear : Color.accentColor.opacity(0.12))
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if isStaged {
+                        windowManager.unstageWindow(window)
+                    } else {
+                        windowManager.stageWindow(window)
+                    }
                 }
-            } label: {
-                Image(systemName: isStaged ? "eye.slash" : "eye.fill")
-                    .font(.system(size: 9))
-                    .foregroundStyle(isStaged ? Color.secondary.opacity(0.4) : Color.accentColor)
-                    .frame(width: 18, height: 18)
-                    .background(
-                        RoundedRectangle(cornerRadius: 3)
-                            .fill(isStaged ? Color.clear : Color.accentColor.opacity(0.12))
-                    )
-            }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 3)
         .padding(.vertical, 2)

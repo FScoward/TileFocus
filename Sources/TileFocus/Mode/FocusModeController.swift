@@ -190,9 +190,17 @@ final class FocusModeController {
         if let match = managed.first(where: {
             $0.pid == pid && ($0.title == title || title.isEmpty)
         }) ?? managed.first(where: { $0.pid == pid }) {
-            if match.id != focusedWindowID {
-                Log.info(Self.tag, "handleFocusChanged: フォーカス自動変更 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
-                setFocusedWindowID(match.id)
+            
+            // ★ Option キーが押されている場合は、フォーカス移動だけでなくマスター（王冠）にも設定する
+            let isOptionPressed = NSEvent.modifierFlags.contains(.option)
+            if isOptionPressed {
+                Log.info(Self.tag, "handleFocusChanged: Optionキー押下を検知。マスターに設定 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
+                windowManager.setMasterWindow(to: match.id)
+            } else {
+                if match.id != focusedWindowID {
+                    Log.info(Self.tag, "handleFocusChanged: フォーカス自動変更 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
+                    setFocusedWindowID(match.id)
+                }
             }
         }
     }
