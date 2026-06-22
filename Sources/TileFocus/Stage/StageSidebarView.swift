@@ -474,6 +474,7 @@ struct StageTopBarView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.001))
         .contentShape(Rectangle())
+        .onDrop(of: [UTType.text], delegate: DummyDropDelegate(draggedItem: $draggedWindow))
         .animation(.easeInOut(duration: 0.18), value: windowManager.isStagedWindowsBarExpanded)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .onAppear {
@@ -724,7 +725,6 @@ struct WindowDropDelegate: DropDelegate {
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        self.draggedItem = nil
         // ドロップ確定時に WindowManager のオーダーを更新（他のスクリーンに属するウィンドウ順序を消去しないようマージする）
         let targetIDs = Set(tempWindows.map { $0.id })
         var currentOrder = windowManager.customWindowOrder
@@ -734,6 +734,12 @@ struct WindowDropDelegate: DropDelegate {
         currentOrder.insert(contentsOf: tempWindows.map { $0.id }, at: insertIndex)
         
         windowManager.customWindowOrder = currentOrder
+        
+        // customWindowOrder の変更が反映され、allWindowsForScreen が更新されるのを待ってから nil に戻すことで
+        // 旧順序による onChange での tempWindows 上書きを防ぐ
+        DispatchQueue.main.async {
+            self.draggedItem = nil
+        }
         return true
     }
 
@@ -823,6 +829,19 @@ class LayoutOverlayManager {
         }
         overlayPanels.removeAll()
     }
+}
+
+// MARK: - DummyDropDelegate
+
+struct DummyDropDelegate: DropDelegate {
+    @Binding var draggedItem: ManagedWindow?
+    
+    func performDrop(info: DropInfo) -> Bool {
+        draggedItem = nil
+        return true
+    }
+    
+    func dropEntered(info: DropInfo) {}
 }
 
 
