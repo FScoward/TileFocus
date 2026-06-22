@@ -29,7 +29,18 @@ final class WindowManager: ObservableObject {
     @Published private(set) var focusedWindowID: String?
 
     /// Focus Mode における現在のマスター（メイン）ウィンドウ ID
-    @Published private(set) var masterWindowID: String?
+    @Published private(set) var masterWindowID: String? {
+        didSet {
+            if let activeScreen = NSScreen.main ?? NSScreen.screens.first {
+                let key = AccessibilityHelper.getActiveSpaceUUID(for: activeScreen) ?? activeScreen.identifier
+                if let masterWindowID {
+                    masterWindowIDsBySpace[key] = masterWindowID
+                } else {
+                    masterWindowIDsBySpace.removeValue(forKey: key)
+                }
+            }
+        }
+    }
 
     /// ユーザーがドラッグ＆ドロップで並べ替えたウィンドウIDの順序
     @Published var customWindowOrder: [String] = [] {
@@ -110,6 +121,8 @@ final class WindowManager: ObservableObject {
     private var windowObserver: WindowObserver?
     private var hotKeyManager: HotKeyManager?
     private var workspaceObservers: [NSObjectProtocol] = []
+    /// 仮想スペースUUID（またはモニターID）ごとのマスターウィンドウIDの記憶
+    private var masterWindowIDsBySpace: [String: String] = [:]
 
     // MARK: - Init
 
@@ -431,9 +444,40 @@ final class WindowManager: ObservableObject {
         stageManager?.syncStagedWindows(validStaged)
 
         managedWindows = windows
+        
+        // 仮想スペース切り替え時やウィンドウリスト更新時に、現在のスペース用のマスターウィンドウIDを復帰させる
+        restoreMasterWindowIDForActiveSpace()
+
         print("[WindowManager] ウィンドウリスト更新: \(windows.count) 件 (front=\(frontPid.map(String.init) ?? "none"))")
         for (i, w) in windows.enumerated() {
             print("  [\(i)] \(w.appName) - \(w.title) frame=\(w.frame)")
+        }
+    }
+
+    /// 現在のアクティブなスペースに保存されているマスターウィンドウIDを復元する
+    private func restoreMasterWindowIDForActiveSpace() {
+        guard let activeScreen = NSScreen.main ?? NSScreen.screens.first else { return }
+        let key = AccessibilityHelper.getActiveSpaceUUID(for: activeScreen) ?? activeScreen.identifier
+        
+        if let savedMasterID = masterWindowIDsBySpace[key] {
+            // 保存されていたマスターウィンドウが、現在のウィンドウリスト（managedWindows または stagedWindows）に実在するかチェック
+            let all = managedWindows + stagedWindows
+            if all.contains(where: { $0.id == savedMasterID }) {
+                // 実在する場合はそれを適用
+                if masterWindowID != savedMasterID {
+                    Log.info("WindowManager", "アクティブスペースのマスターウィンドウIDを復元: \(savedMasterID)")
+                    masterWindowID = savedMasterID
+                }
+                return
+            }
+        }
+        
+        // 保存されたマスターが存在しない、または無効な場合は、現在フォーカスされているウィンドウ、または先頭のウィンドウをマスター候補とする
+        let remaining = managedWindows.filter { $0.state != .staged }
+        if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
+            masterWindowID = nextMaster.id
+        } else {
+            masterWindowID = nil
         }
     }
 
