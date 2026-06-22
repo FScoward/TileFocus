@@ -359,9 +359,10 @@ struct StageTopBarView: View {
                             .frame(height: 30)
                     } else {
                         LazyVGrid(columns: columns, spacing: 6) {
-                            ForEach(tempWindows.indices, id: \.self) { index in
-                                let window = tempWindows[index]
-                                windowItem(window, index: index)
+                            ForEach(tempWindows, id: \.id) { window in
+                                if let index = tempWindows.firstIndex(where: { $0.id == window.id }) {
+                                    windowItem(window, index: index)
+                                }
                             }
                         }
                         .padding(.horizontal, 10)
@@ -490,26 +491,12 @@ struct StageTopBarView: View {
         }
     }
 
-    /// ドラッグ中のカードの位置を、インデックス移動差分を差し引いて補正する
+    /// ドラッグ中のカードの位置を、マウス移動量に追随させる
     private func correctedDragOffset(for windowID: String) -> CGSize {
-        guard draggingWindowID == windowID,
-              let startIdx = dragStartIndex,
-              let activeIdx = hoveringIndex else {
+        guard draggingWindowID == windowID else {
             return .zero
         }
-        
-        let startCol = startIdx % 4
-        let startRow = startIdx / 4
-        let activeCol = activeIdx % 4
-        let activeRow = activeIdx / 4
-        
-        let diffX = CGFloat(activeCol - startCol) * 146
-        let diffY = CGFloat(activeRow - startRow) * 36
-        
-        return CGSize(
-            width: dragOffset.width - diffX,
-            height: dragOffset.height - diffY
-        )
+        return dragOffset
     }
 
     /// ドラッグ中のカードを避けるために、他のカードをスライドさせるオフセットを算出する
@@ -780,7 +767,8 @@ struct StageTopBarView: View {
                         }
                     }
                 }
-                .onEnded { _ in
+                .onEnded { value in
+                    Log.info("StageTopBarView", "DragGesture onEnded: startIdx=\(dragStartIndex.map(String.init) ?? "nil"), hoveringIndex=\(hoveringIndex.map(String.init) ?? "nil")")
                     if let targetIdx = hoveringIndex, let startIdx = dragStartIndex, targetIdx != startIdx {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             let moving = tempWindows.remove(at: startIdx)
@@ -794,11 +782,14 @@ struct StageTopBarView: View {
                         currentOrder.removeAll { targetIDs.contains($0) }
                         currentOrder.insert(contentsOf: tempWindows.map { $0.id }, at: insertIndex)
                         
-                        windowManager.customWindowOrder = currentOrder
-                        
                         if let newMaster = tempWindows.first {
+                            Log.info("StageTopBarView", "Switching master to newMaster: \(newMaster.appName) (\(newMaster.id))")
                             windowManager.switchFocusedWindow(to: newMaster.id)
                         }
+                        
+                        windowManager.customWindowOrder = currentOrder
+                    } else {
+                        Log.info("StageTopBarView", "DragGesture ended without order change.")
                     }
                     
                     draggingWindowID = nil
