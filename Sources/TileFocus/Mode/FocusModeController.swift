@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import Carbon
 
 /// Focus Mode のロジックを担当するコントローラー
 @MainActor
@@ -192,8 +193,7 @@ final class FocusModeController {
         }) ?? managed.first(where: { $0.pid == pid }) {
             
             // ★ Shift キーが押されている場合は、フォーカス移動だけでなくマスター（王冠）にも設定する
-            // 56: 左Shift, 60: 右Shift
-            let isShiftPressed = CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(56)) || CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(60))
+            let isShiftPressed = NSEvent.modifierFlags.contains(.shift)
             if isShiftPressed {
                 Log.info(Self.tag, "handleFocusChanged: Shiftキー押下を検知。マスターに設定 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
                 windowManager.setMasterWindow(to: match.id)
@@ -614,7 +614,7 @@ final class FocusModeController {
         }
 
         // focus() 後の OS によるウィンドウ微小移動通知を吸収するため少し遅らせて false に戻す
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self else { return }
             self.windowManager?.syncActualFrames() // 物理的な配置完了後のリアル座標で最終同期！
             self.windowManager?.setTilingInProgress(false)

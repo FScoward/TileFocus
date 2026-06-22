@@ -163,21 +163,30 @@ final class StageTopBarController: NSObject {
             targetHeight = collapsedHeight
         } else {
             // そのスクリーンに属するウィンドウ数を動的に取得して高さを計算
-            let screenManager = ScreenManager()
-            let all = windowManager.managedWindows + windowManager.stagedWindows
-            let count = all.filter { window in
-                let frame = window.frameBeforeStaging ?? window.frame
-                return screenManager.screen(containingAXFrame: frame) == screen
-            }.count
+            let wins = getWindowsForScreen(screen: screen, windowManager: windowManager)
+            let activeWins = wins.active
+            let stagedCount = wins.staged.count
             
-            // 4列グリッドの行数
-            let rows = max(1, Int(ceil(Double(count) / 4.0)))
-            // 1行あたり 30px + 行間 6px、上下パディング計 20px
-            let gridHeight = CGFloat(rows * 30 + (rows - 1) * 6 + 20)
+            // 各カラムの最大行数を計算
+            let focusStyle = windowManager.focusStyle(for: screen)
+            let split = getSplitWindows(activeWins: activeWins, focusStyle: focusStyle, masterWindowID: windowManager.masterWindow?.id)
+            let maxActiveRows = max(split.left.count, max(split.main.count, split.right.count))
+            
+            // 各行 30px + 行間 6px、ヘッダーパディングなど
+            let activeHeight = CGFloat(maxActiveRows * 30 + max(0, maxActiveRows - 1) * 6 + 32)
+            
+            // stagedCount がある場合は、Divider + ラベル + グリッド高さを加算
+            let stagedHeight: CGFloat
+            if stagedCount > 0 {
+                let stagedRows = Int(ceil(Double(stagedCount) / 4.0))
+                stagedHeight = 24 + CGFloat(stagedRows * 30 + (stagedRows - 1) * 6)
+            } else {
+                stagedHeight = 0
+            }
             
             // Focus Mode のときはレイアウト切り替えツールバーの高さ（34px）を追加
             let toolbarHeight: CGFloat = (windowManager.currentMode == .focus) ? 34 : 0
-            targetHeight = gridHeight + toolbarHeight
+            targetHeight = activeHeight + stagedHeight + toolbarHeight
         }
         
         let targetY = collapsed ? (screenFrame.maxY - visibleOffset) : (screenFrame.maxY - targetHeight)
@@ -233,57 +242,35 @@ struct StageTopBarView: View {
     @State private var hoveredWindowID: String?
     @State private var draggedWindow: ManagedWindow?
     @State private var tempWindows: [ManagedWindow] = []
+    
+    // 2次元ドラッグ状態
     @State private var draggingWindowID: String? = nil
-    @State private var dragStartIndex: Int? = nil
-    @State private var hoveringIndex: Int? = nil
+    @State private var dragStartCol: Int = -1
+    @State private var dragStartRow: Int = -1
+    @State private var dragTargetCol: Int = -1
+    @State private var dragTargetRow: Int = -1
     @State private var dragOffset: CGSize = .zero
+    
     private let overlayManager = LayoutOverlayManager()
 
-
     /// このスクリーンに所属するすべてのウィンドウ（表示中 + 格納中）
-    /// 実際の画面上の物理的な配置（左から右）と表示順を一致させ、格納中ウィンドウは末尾に並べます
     private var allWindowsForScreen: [ManagedWindow] {
-        let screenManager = ScreenManager()
-        let all = windowManager.managedWindows + windowManager.stagedWindows
-        let filtered = all.filter { window in
-            let frame = window.frameBeforeStaging ?? window.frame
-            let winScreen = screenManager.screen(containingAXFrame: frame)
-            return winScreen == screen
-        }
-        
-        // 格納中（staged）のウィンドウと、表示中のウィンドウに分ける
-        let stagedWins = filtered.filter { window in
-            windowManager.stagedWindows.contains(where: { $0.id == window.id })
-        }
-        let activeWins = filtered.filter { window in
-            !windowManager.stagedWindows.contains(where: { $0.id == window.id })
-        }
-        
-        // 表示中のウィンドウを実際の画面の X 座標（左から右）の順でソート
-        // X座標が同じ場合は Y 座標（上から下）の順でソートします
-        let sortedActive = activeWins.sorted { w1, w2 in
-            let f1 = w1.frameBeforeStaging ?? w1.frame
-            let f2 = w2.frameBeforeStaging ?? w2.frame
-            if abs(f1.minX - f2.minX) > 10 {
-                return f1.minX < f2.minX
-            }
-            return f1.minY < f2.minY
-        }
-        
-        // 格納中のウィンドウは末尾に名前順でソートして結合
-        let sortedStaged = stagedWins.sorted { $0.appName < $1.appName }
-        
-        return sortedActive + sortedStaged
+        let wins = getWindowsForScreen(screen: screen, windowManager: windowManager)
+        return wins.active + wins.staged
     }
-
-
-    // 1行4列のグリッドレイアウト
-    private let columns = [
-        GridItem(.fixed(140), spacing: 6),
-        GridItem(.fixed(140), spacing: 6),
-        GridItem(.fixed(140), spacing: 6),
-        GridItem(.fixed(140), spacing: 6)
-    ]
+    
+    private var splitTempWindows: SplitWindows {
+        let active = tempWindows.filter { win in
+            !windowManager.stagedWindows.contains(where: { $0.id == win.id })
+        }
+        return getSplitWindows(activeWins: active, focusStyle: windowManager.focusStyle(for: screen), masterWindowID: windowManager.masterWindow?.id)
+    }
+    
+    private var stagedTempWindows: [ManagedWindow] {
+        tempWindows.filter { win in
+            windowManager.stagedWindows.contains(where: { $0.id == win.id })
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -338,15 +325,88 @@ struct StageTopBarView: View {
                             .foregroundStyle(.secondary)
                             .frame(height: 30)
                     } else {
-                        LazyVGrid(columns: columns, spacing: 6) {
-                            ForEach(tempWindows, id: \.id) { window in
-                                if let index = tempWindows.firstIndex(where: { $0.id == window.id }) {
-                                    windowItem(window, index: index)
+                        VStack(spacing: 8) {
+                            // アクティブウィンドウ（左、メイン、右の3列）
+                            let split = splitTempWindows
+                            HStack(alignment: .top, spacing: 12) {
+                                // 左サイドバー列
+                                VStack(spacing: 6) {
+                                    Text("左サブ")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                    ForEach(split.left, id: \.id) { window in
+                                        if let index = tempWindows.firstIndex(where: { $0.id == window.id }) {
+                                            windowItem(window, index: index, col: 0, row: split.left.firstIndex(where: { $0.id == window.id }) ?? 0)
+                                        }
+                                    }
+                                    Spacer(minLength: 0)
                                 }
+                                .frame(width: 140)
+                                
+                                Divider()
+                                
+                                // メイン列
+                                VStack(spacing: 6) {
+                                    Text("メイン")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                    ForEach(split.main, id: \.id) { window in
+                                        if let index = tempWindows.firstIndex(where: { $0.id == window.id }) {
+                                            windowItem(window, index: index, col: 1, row: split.main.firstIndex(where: { $0.id == window.id }) ?? 0)
+                                        }
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                .frame(width: 140)
+                                
+                                Divider()
+                                
+                                // 右サイドバー列
+                                VStack(spacing: 6) {
+                                    Text("右サブ")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                    ForEach(split.right, id: \.id) { window in
+                                        if let index = tempWindows.firstIndex(where: { $0.id == window.id }) {
+                                            windowItem(window, index: index, col: 2, row: split.right.firstIndex(where: { $0.id == window.id }) ?? 0)
+                                        }
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                .frame(width: 140)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            
+                            // 格納中ウィンドウ
+                            let staged = stagedTempWindows
+                            if !staged.isEmpty {
+                                Divider()
+                                    .padding(.horizontal, 10)
+                                
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("格納中")
+                                        .font(.system(size: 8, weight: .bold))
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 10)
+                                    
+                                    LazyVGrid(columns: [
+                                        GridItem(.fixed(140), spacing: 6),
+                                        GridItem(.fixed(140), spacing: 6),
+                                        GridItem(.fixed(140), spacing: 6),
+                                        GridItem(.fixed(140), spacing: 6)
+                                    ], spacing: 6) {
+                                        ForEach(staged, id: \.id) { window in
+                                            if let index = tempWindows.firstIndex(where: { $0.id == window.id }) {
+                                                windowItem(window, index: index, col: -1, row: -1)
+                                            }
+                                        }
+                                    }
+                                    .padding(.horizontal, 10)
+                                }
+                                .padding(.bottom, 8)
                             }
                         }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 10)
                     }
                 }
                 .background(
@@ -480,45 +540,43 @@ struct StageTopBarView: View {
     }
 
     /// ドラッグ中のカードを避けるために、他のカードをスライドさせるオフセットを算出する
-    private func displacementOffset(for windowID: String) -> CGSize {
+    private func displacementOffset(for windowID: String, col: Int, row: Int) -> CGSize {
         guard let draggingWindowID = draggingWindowID,
               draggingWindowID != windowID,
-              let startIdx = dragStartIndex,
-              let targetIdx = hoveringIndex,
-              let itemIdx = tempWindows.firstIndex(where: { $0.id == windowID }) else {
+              dragStartCol != -1,
+              dragTargetCol != -1,
+              col != -1 else {
             return .zero
         }
         
-        guard startIdx != targetIdx else { return .zero }
-        
-        let colWidth: CGFloat = 146
         let rowHeight: CGFloat = 36
+        var offsetHeight: CGFloat = 0
         
-        if startIdx < targetIdx {
-            // ドラッグ中カードが後ろへ移動：startIdx < i <= targetIdx のカードが前にずれる (インデックス - 1)
-            if itemIdx > startIdx && itemIdx <= targetIdx {
-                if itemIdx % 4 == 0 {
-                    return CGSize(width: colWidth * 3, height: -rowHeight)
-                } else {
-                    return CGSize(width: -colWidth, height: 0)
-                }
+        if col == dragStartCol && dragStartCol != dragTargetCol {
+            if row > dragStartRow {
+                offsetHeight = -rowHeight
             }
-        } else {
-            // ドラッグ中カードが前へ移動：targetIdx <= i < startIdx のカードが後ろにずれる (インデックス + 1)
-            if itemIdx >= targetIdx && itemIdx < startIdx {
-                if itemIdx % 4 == 3 {
-                    return CGSize(width: -colWidth * 3, height: rowHeight)
-                } else {
-                    return CGSize(width: colWidth, height: 0)
+        } else if col == dragTargetCol && dragStartCol != dragTargetCol {
+            if row >= dragTargetRow {
+                offsetHeight = rowHeight
+            }
+        } else if col == dragStartCol && dragStartCol == dragTargetCol {
+            if dragStartRow < dragTargetRow {
+                if row > dragStartRow && row <= dragTargetRow {
+                    offsetHeight = -rowHeight
+                }
+            } else if dragStartRow > dragTargetRow {
+                if row >= dragTargetRow && row < dragStartRow {
+                    offsetHeight = rowHeight
                 }
             }
         }
         
-        return .zero
+        return CGSize(width: 0, height: offsetHeight)
     }
 
     @ViewBuilder
-    private func windowItem(_ window: ManagedWindow, index: Int) -> some View {
+    private func windowItem(_ window: ManagedWindow, index: Int, col: Int, row: Int) -> some View {
         let isStaged = windowManager.stagedWindows.contains(where: { $0.id == window.id })
         // 現在マスター（メイン）に設定されているかどうか
         let isMaster = windowManager.masterWindow?.id == window.id
@@ -728,7 +786,7 @@ struct StageTopBarView: View {
         .contentShape(Rectangle())
 
         let isDraggingThis = draggingWindowID == window.id
-        let offset = isDraggingThis ? correctedDragOffset(for: window.id) : displacementOffset(for: window.id)
+        let offset = isDraggingThis ? correctedDragOffset(for: window.id) : displacementOffset(for: window.id, col: col, row: row)
 
         ZStack(alignment: .topLeading) {
             itemContent
@@ -751,94 +809,108 @@ struct StageTopBarView: View {
         .gesture(
             DragGesture(minimumDistance: 5)
                 .onChanged { value in
-                    if dragStartIndex == nil {
-                         if let idx = tempWindows.firstIndex(where: { $0.id == window.id }) {
-                             dragStartIndex = idx
-                             hoveringIndex = idx
-                             draggingWindowID = window.id
-                             draggedWindow = window
-                         }
+                    if draggingWindowID == nil {
+                        draggingWindowID = window.id
+                        draggedWindow = window
+                        dragStartCol = col
+                        dragStartRow = row
+                        dragTargetCol = col
+                        dragTargetRow = row
                     }
                     
                     dragOffset = value.translation
                     
-                    guard let startIdx = dragStartIndex else { return }
+                    guard dragStartCol != -1 else { return }
                     
-                    let colWidth: CGFloat = 146
+                    let colWidth: CGFloat = 152
                     let rowHeight: CGFloat = 36
-                    
-                    let startCol = startIdx % 4
-                    let startRow = startIdx / 4
                     
                     let deltaCol = Int(round(value.translation.width / colWidth))
                     let deltaRow = Int(round(value.translation.height / rowHeight))
                     
-                    let targetCol = max(0, min(3, startCol + deltaCol))
-                    let targetRow = max(0, startRow + deltaRow)
-                    let targetIndex = min(tempWindows.count - 1, max(0, targetRow * 4 + targetCol))
+                    let targetCol = max(0, min(2, dragStartCol + deltaCol))
+                    let targetRow = max(0, dragStartRow + deltaRow)
                     
-                    if targetIndex != hoveringIndex {
+                    let split = splitTempWindows
+                    let colCount: Int
+                    switch targetCol {
+                    case 0: colCount = split.left.count
+                    case 1: colCount = split.main.count
+                    case 2: colCount = split.right.count
+                    default: colCount = 0
+                    }
+                    
+                    let maxRow: Int
+                    if targetCol == dragStartCol {
+                        maxRow = max(0, colCount - 1)
+                    } else {
+                        maxRow = colCount
+                    }
+                    let finalTargetRow = min(maxRow, targetRow)
+                    
+                    if targetCol != dragTargetCol || finalTargetRow != dragTargetRow {
                         withAnimation(.easeInOut(duration: 0.18)) {
-                            hoveringIndex = targetIndex
+                            dragTargetCol = targetCol
+                            dragTargetRow = finalTargetRow
                         }
                     }
                 }
                 .onEnded { value in
-                    Log.info("StageTopBarView", "DragGesture onEnded: startIdx=\(dragStartIndex.map(String.init) ?? "nil"), hoveringIndex=\(hoveringIndex.map(String.init) ?? "nil")")
-                    if let targetIdx = hoveringIndex, let startIdx = dragStartIndex, targetIdx != startIdx {
+                    Log.info("StageTopBarView", "DragGesture onEnded: start=(\(dragStartCol),\(dragStartRow)), target=(\(dragTargetCol),\(dragTargetRow))")
+                    
+                    if dragStartCol != -1 && dragTargetCol != -1 && (dragStartCol != dragTargetCol || dragStartRow != dragTargetRow) {
+                        let active = tempWindows.filter { win in
+                            !windowManager.stagedWindows.contains(where: { $0.id == win.id })
+                        }
+                        var split = getSplitWindows(activeWins: active, focusStyle: windowManager.focusStyle(for: screen), masterWindowID: windowManager.masterWindow?.id)
+                        
+                        let movingWindow: ManagedWindow
+                        switch dragStartCol {
+                        case 0: movingWindow = split.left.remove(at: dragStartRow)
+                        case 1: movingWindow = split.main.remove(at: dragStartRow)
+                        case 2: movingWindow = split.right.remove(at: dragStartRow)
+                        default: return
+                        }
+                        
+                        switch dragTargetCol {
+                        case 0: split.left.insert(movingWindow, at: dragTargetRow)
+                        case 1: split.main.insert(movingWindow, at: dragTargetRow)
+                        case 2: split.right.insert(movingWindow, at: dragTargetRow)
+                        default: return
+                        }
+                        
+                        let newActive = split.left + split.main + split.right
+                        let staged = tempWindows.filter { win in
+                            windowManager.stagedWindows.contains(where: { $0.id == win.id })
+                        }
+                        
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            let moving = tempWindows.remove(at: startIdx)
-                            tempWindows.insert(moving, at: targetIdx)
+                            tempWindows = newActive + staged
                         }
                         
-                        // 1. レイアウト上のマスター（王冠）のインデックスを計算する
-                        let focusStyle = windowManager.focusStyle(for: screen)
-                        let mainIndex: Int
-                        let totalSideCount = tempWindows.count - 1
-                        
-                        switch focusStyle {
-                        case .centered, .splitCentered:
-                            var leftCount = 0
-                            for i in 1...totalSideCount {
-                                if i % 2 == 1 { leftCount += 1 }
-                            }
-                            mainIndex = leftCount
-                        case .leftMain, .absoluteSplit2:
-                            mainIndex = 0
-                        case .rightMain:
-                            mainIndex = totalSideCount
-                        case .absoluteSplit3:
-                            mainIndex = (tempWindows.count >= 3) ? 1 : 0
+                        if let newMaster = split.main.first {
+                            windowManager.switchFocusedWindow(to: newMaster.id)
+                        } else if let newMaster = newActive.first {
+                            windowManager.switchFocusedWindow(to: newMaster.id)
                         }
                         
-                        let newMasterIndex = max(0, min(tempWindows.count - 1, mainIndex))
-                        let newMaster = tempWindows[newMasterIndex]
-                        
-                        // 2. マスターウィンドウ以外の並び順を作成
-                        var remainingWindows = tempWindows
-                        remainingWindows.remove(at: newMasterIndex)
-                        
-                        let targetIDs = Set(tempWindows.map { $0.id })
+                        let targetIDs = Set(newActive.map { $0.id })
                         var currentOrder = windowManager.customWindowOrder
                         
                         let insertIndex = currentOrder.firstIndex { targetIDs.contains($0) } ?? currentOrder.count
                         currentOrder.removeAll { targetIDs.contains($0) }
                         
-                        // 新しい順序として [newMaster] + [残りのウィンドウ] を customWindowOrder に保存
-                        let newOrderForThisScreen = [newMaster.id] + remainingWindows.map { $0.id }
+                        let newOrderForThisScreen = newActive.map { $0.id }
                         currentOrder.insert(contentsOf: newOrderForThisScreen, at: insertIndex)
                         
-                        // 先にマスターを適用し、その後に customWindowOrder を更新して順序競合を防ぐ
-                        Log.info("StageTopBarView", "Switching master to physical master: \(newMaster.appName) (\(newMaster.id)) at index \(newMasterIndex)")
-                        windowManager.switchFocusedWindow(to: newMaster.id)
                         windowManager.customWindowOrder = currentOrder
-                    } else {
-                        Log.info("StageTopBarView", "DragGesture ended without order change.")
                     }
                     
                     draggingWindowID = nil
-                    dragStartIndex = nil
-                    hoveringIndex = nil
+                    dragStartCol = -1
+                    dragStartRow = -1
+                    dragTargetCol = -1
+                    dragTargetRow = -1
                     dragOffset = .zero
                     draggedWindow = nil
                 }
@@ -931,6 +1003,174 @@ class LayoutOverlayManager {
 }
 
 // MARK: - DummyDropDelegate
+
+
+// MARK: - Layout Helpers
+
+struct SplitWindows {
+    var left: [ManagedWindow]
+    var main: [ManagedWindow]
+    var right: [ManagedWindow]
+}
+
+@MainActor
+func getWindowsForScreen(screen: NSScreen, windowManager: WindowManager) -> (active: [ManagedWindow], staged: [ManagedWindow]) {
+    let screenManager = ScreenManager()
+    let all = windowManager.managedWindows + windowManager.stagedWindows
+    let filtered = all.filter { window in
+        let frame = window.frameBeforeStaging ?? window.frame
+        let winScreen = screenManager.screen(containingAXFrame: frame)
+        return winScreen == screen
+    }
+    
+    // 格納中（staged）のウィンドウと、表示中のウィンドウに分ける
+    let stagedWins = filtered.filter { window in
+        windowManager.stagedWindows.contains(where: { $0.id == window.id })
+    }
+    let activeWins = filtered.filter { window in
+        !windowManager.stagedWindows.contains(where: { $0.id == window.id })
+    }
+    
+    // 表示中のウィンドウを、現在の Focus Style に基づいて論理的な物理配置順（左から右）にソート
+    let sortedActive: [ManagedWindow]
+    if let master = activeWins.first(where: { $0.id == windowManager.masterWindow?.id }) {
+        var others = activeWins.filter { $0.id != master.id }
+        
+        // others を customWindowOrder に基づいてソート
+        others.sort { w1, w2 in
+            let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
+            let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
+            switch (idx1, idx2) {
+            case (.some(let i1), .some(let i2)): return i1 < i2
+            case (.some, .none): return true
+            case (.none, .some): return false
+            case (.none, .none): return w1.appName < w2.appName
+            }
+        }
+        
+        let focusStyle = windowManager.focusStyle(for: screen)
+        switch focusStyle {
+        case .centered, .splitCentered:
+            var leftOthers: [ManagedWindow] = []
+            var rightOthers: [ManagedWindow] = []
+            for (idx, win) in others.enumerated() {
+                if idx % 2 == 0 {
+                    leftOthers.append(win) // 奇数番目（0-basedで偶数インデックス）は左側
+                } else {
+                    rightOthers.append(win) // 偶数番目（0-basedで奇数インデックス）は右側
+                }
+            }
+            sortedActive = leftOthers + [master] + rightOthers
+            
+        case .leftMain, .absoluteSplit2:
+            sortedActive = [master] + others
+            
+        case .rightMain:
+            sortedActive = others + [master]
+            
+        case .absoluteSplit3:
+            if others.count >= 2 {
+                sortedActive = [others[0]] + [master] + [others[1]] + others.dropFirst(2)
+            } else if others.count == 1 {
+                sortedActive = [others[0]] + [master]
+            } else {
+                sortedActive = [master]
+            }
+        }
+    } else {
+        // マスターがない場合は customWindowOrder の順で並べる
+        sortedActive = activeWins.sorted { w1, w2 in
+            let idx1 = windowManager.customWindowOrder.firstIndex(of: w1.id)
+            let idx2 = windowManager.customWindowOrder.firstIndex(of: w2.id)
+            switch (idx1, idx2) {
+            case (.some(let i1), .some(let i2)): return i1 < i2
+            case (.some, .none): return true
+            case (.none, .some): return false
+            case (.none, .none): return w1.appName < w2.appName
+            }
+        }
+    }
+    
+    // 格納中のウィンドウは末尾に名前順でソート
+    let sortedStaged = stagedWins.sorted { $0.appName < $1.appName }
+    
+    return (active: sortedActive, staged: sortedStaged)
+}
+
+@MainActor
+func getSplitWindows(activeWins: [ManagedWindow], focusStyle: FocusStyle, masterWindowID: String?) -> SplitWindows {
+    var left: [ManagedWindow] = []
+    var main: [ManagedWindow] = []
+    var right: [ManagedWindow] = []
+    
+    guard !activeWins.isEmpty else {
+        return SplitWindows(left: [], main: [], right: [])
+    }
+    
+    // マスターウィンドウを特定（通常は activeWins の最初の要素、または masterWindowID に一致するもの）
+    let master = activeWins.first(where: { $0.id == masterWindowID }) ?? activeWins.first!
+    let others = activeWins.filter { $0.id != master.id }
+    
+    switch focusStyle {
+    case .centered, .splitCentered:
+        let mainCount = (focusStyle == .splitCentered && activeWins.count >= 2) ? 2 : 1
+        if mainCount == 2 {
+            // master と others.first がメイン
+            main = [master]
+            if let secondMain = others.first {
+                main.append(secondMain)
+            }
+            let remainingOthers = Array(others.dropFirst())
+            for (idx, win) in remainingOthers.enumerated() {
+                if idx % 2 == 0 {
+                    left.append(win)
+                } else {
+                    right.append(win)
+                }
+            }
+        } else {
+            main = [master]
+            for (idx, win) in others.enumerated() {
+                if idx % 2 == 0 {
+                    left.append(win)
+                } else {
+                    right.append(win)
+                }
+            }
+        }
+        
+    case .leftMain:
+        main = [master]
+        right = others
+        
+    case .absoluteSplit2:
+        // 2分割: 左に1枚目、右に2枚目
+        if activeWins.count >= 2 {
+            left = [activeWins[0]]
+            right = [activeWins[1]]
+        } else if activeWins.count == 1 {
+            left = [activeWins[0]]
+        }
+        
+    case .rightMain:
+        main = [master]
+        left = others
+        
+    case .absoluteSplit3:
+        main = [master]
+        if others.count >= 2 {
+            left = [others[0]]
+            right = [others[1]]
+            if others.count > 2 {
+                right.append(contentsOf: others.dropFirst(2))
+            }
+        } else if others.count == 1 {
+            left = [others[0]]
+        }
+    }
+    
+    return SplitWindows(left: left, main: main, right: right)
+}
 
 
 
