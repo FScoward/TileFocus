@@ -235,7 +235,7 @@ struct StageTopBarView: View {
     @State private var tempWindows: [ManagedWindow] = []
     @State private var draggingWindowID: String? = nil
     @State private var dragStartIndex: Int? = nil
-    @State private var activeDragIndex: Int? = nil
+    @State private var hoveringIndex: Int? = nil
     @State private var dragOffset: CGSize = .zero
     private let overlayManager = LayoutOverlayManager()
 
@@ -359,26 +359,9 @@ struct StageTopBarView: View {
                             .frame(height: 30)
                     } else {
                         LazyVGrid(columns: columns, spacing: 6) {
-                            ForEach(tempWindows) { window in
-                                if let index = tempWindows.firstIndex(where: { $0.id == window.id }) {
-                                    ZStack(alignment: .topLeading) {
-                                        windowItem(window)
-                                        
-                                        // インデックスバッジ（フォーカス中はイエロー、その他はパープル。サイズも大きく影をつけて視認性向上）
-                                        Text("\(index + 1)")
-                                            .font(.system(size: 9, weight: .bold, design: .rounded))
-                                            .foregroundStyle(.white)
-                                            .frame(width: 16, height: 16)
-                                            .background(
-                                                Circle()
-                                                    .fill(window.id == windowManager.focusedWindowID ? Color.yellow : Color.purple)
-                                            )
-                                            .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)
-                                            .offset(x: -4, y: -4)
-                                    }
-                                } else {
-                                    windowItem(window)
-                                }
+                            ForEach(tempWindows.indices, id: \.self) { index in
+                                let window = tempWindows[index]
+                                windowItem(window, index: index)
                             }
                         }
                         .padding(.horizontal, 10)
@@ -507,13 +490,72 @@ struct StageTopBarView: View {
         }
     }
 
+    /// ドラッグ中のカードの位置を、インデックス移動差分を差し引いて補正する
+    private func correctedDragOffset(for windowID: String) -> CGSize {
+        guard draggingWindowID == windowID,
+              let startIdx = dragStartIndex,
+              let activeIdx = hoveringIndex else {
+            return .zero
+        }
+        
+        let startCol = startIdx % 4
+        let startRow = startIdx / 4
+        let activeCol = activeIdx % 4
+        let activeRow = activeIdx / 4
+        
+        let diffX = CGFloat(activeCol - startCol) * 146
+        let diffY = CGFloat(activeRow - startRow) * 36
+        
+        return CGSize(
+            width: dragOffset.width - diffX,
+            height: dragOffset.height - diffY
+        )
+    }
+
+    /// ドラッグ中のカードを避けるために、他のカードをスライドさせるオフセットを算出する
+    private func displacementOffset(for windowID: String) -> CGSize {
+        guard let draggingWindowID = draggingWindowID,
+              draggingWindowID != windowID,
+              let startIdx = dragStartIndex,
+              let targetIdx = hoveringIndex,
+              let itemIdx = tempWindows.firstIndex(where: { $0.id == windowID }) else {
+            return .zero
+        }
+        
+        guard startIdx != targetIdx else { return .zero }
+        
+        let colWidth: CGFloat = 146
+        let rowHeight: CGFloat = 36
+        
+        if startIdx < targetIdx {
+            // ドラッグ中カードが後ろへ移動：startIdx < i <= targetIdx のカードが前にずれる (インデックス - 1)
+            if itemIdx > startIdx && itemIdx <= targetIdx {
+                if itemIdx % 4 == 0 {
+                    return CGSize(width: colWidth * 3, height: -rowHeight)
+                } else {
+                    return CGSize(width: -colWidth, height: 0)
+                }
+            }
+        } else {
+            // ドラッグ中カードが前へ移動：targetIdx <= i < startIdx のカードが後ろにずれる (インデックス + 1)
+            if itemIdx >= targetIdx && itemIdx < startIdx {
+                if itemIdx % 4 == 3 {
+                    return CGSize(width: -colWidth * 3, height: rowHeight)
+                } else {
+                    return CGSize(width: colWidth, height: 0)
+                }
+            }
+        }
+        
+        return .zero
+    }
+
     @ViewBuilder
-    private func windowItem(_ window: ManagedWindow) -> some View {
+    private func windowItem(_ window: ManagedWindow, index: Int) -> some View {
         let isStaged = windowManager.stagedWindows.contains(where: { $0.id == window.id })
         // 現在マスター（メイン）に設定されているかどうか
         let isMaster = windowManager.masterWindow?.id == window.id
 
-        
         // 型推論エラーを避けるためにスタイル変数を切り出し
         let appLetterBg = isStaged ? Color.secondary.opacity(0.15) : Color.accentColor.opacity(0.15)
         let appLetterFg = isStaged ? Color.secondary : Color.accentColor
@@ -681,71 +723,91 @@ struct StageTopBarView: View {
         )
         .frame(width: 140) // グリッドの各アイテム幅を140pxに固定
         .contentShape(Rectangle())
-        .opacity(draggingWindowID == window.id ? 0.6 : (draggedWindow != nil ? 0.35 : 1.0))
 
-        itemContent
-            .offset(draggingWindowID == window.id ? dragOffset : .zero)
-            .zIndex(draggingWindowID == window.id ? 100 : 1)
-            .gesture(
-                DragGesture(minimumDistance: 5)
-                    .onChanged { value in
-                        if dragStartIndex == nil {
-                            if let idx = tempWindows.firstIndex(where: { $0.id == window.id }) {
-                                dragStartIndex = idx
-                                activeDragIndex = idx
-                                draggingWindowID = window.id
-                                draggedWindow = window
-                            }
-                        }
-                        
-                        dragOffset = value.translation
-                        
-                        guard let startIdx = dragStartIndex, let activeIdx = activeDragIndex else { return }
-                        
-                        let colWidth: CGFloat = 146
-                        let rowHeight: CGFloat = 36
-                        
-                        let startCol = startIdx % 4
-                        let startRow = startIdx / 4
-                        
-                        let deltaCol = Int(round(value.translation.width / colWidth))
-                        let deltaRow = Int(round(value.translation.height / rowHeight))
-                        
-                        let targetCol = max(0, min(3, startCol + deltaCol))
-                        let targetRow = max(0, startRow + deltaRow)
-                        let targetIndex = min(tempWindows.count - 1, max(0, targetRow * 4 + targetCol))
-                        
-                        if targetIndex != activeIdx {
-                            withAnimation(.easeInOut(duration: 0.18)) {
-                                let moving = tempWindows.remove(at: activeIdx)
-                                tempWindows.insert(moving, at: targetIndex)
-                                activeDragIndex = targetIndex
-                            }
+        let isDraggingThis = draggingWindowID == window.id
+        let offset = isDraggingThis ? correctedDragOffset(for: window.id) : displacementOffset(for: window.id)
+
+        ZStack(alignment: .topLeading) {
+            itemContent
+            
+            // インデックスバッジ（ドラッグ中もカードと一緒に移動し、常に最前面に表示）
+            Text("\(index + 1)")
+                .font(.system(size: 9, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(width: 16, height: 16)
+                .background(
+                    Circle()
+                        .fill(window.id == windowManager.focusedWindowID ? Color.yellow : Color.purple)
+                )
+                .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)
+                .offset(x: -4, y: -4)
+        }
+        .offset(offset)
+        .zIndex(isDraggingThis ? 100 : (draggingWindowID != nil ? 10 : 1))
+        .opacity(isDraggingThis ? 0.6 : (draggingWindowID != nil && draggedWindow?.id == window.id ? 0.35 : 1.0))
+        .gesture(
+            DragGesture(minimumDistance: 5)
+                .onChanged { value in
+                    if dragStartIndex == nil {
+                         if let idx = tempWindows.firstIndex(where: { $0.id == window.id }) {
+                             dragStartIndex = idx
+                             hoveringIndex = idx
+                             draggingWindowID = window.id
+                             draggedWindow = window
+                         }
+                    }
+                    
+                    dragOffset = value.translation
+                    
+                    guard let startIdx = dragStartIndex else { return }
+                    
+                    let colWidth: CGFloat = 146
+                    let rowHeight: CGFloat = 36
+                    
+                    let startCol = startIdx % 4
+                    let startRow = startIdx / 4
+                    
+                    let deltaCol = Int(round(value.translation.width / colWidth))
+                    let deltaRow = Int(round(value.translation.height / rowHeight))
+                    
+                    let targetCol = max(0, min(3, startCol + deltaCol))
+                    let targetRow = max(0, startRow + deltaRow)
+                    let targetIndex = min(tempWindows.count - 1, max(0, targetRow * 4 + targetCol))
+                    
+                    if targetIndex != hoveringIndex {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            hoveringIndex = targetIndex
                         }
                     }
-                    .onEnded { _ in
-                        if let _ = draggingWindowID {
-                            let targetIDs = Set(tempWindows.map { $0.id })
-                            var currentOrder = windowManager.customWindowOrder
-                            
-                            let insertIndex = currentOrder.firstIndex { targetIDs.contains($0) } ?? currentOrder.count
-                            currentOrder.removeAll { targetIDs.contains($0) }
-                            currentOrder.insert(contentsOf: tempWindows.map { $0.id }, at: insertIndex)
-                            
-                            windowManager.customWindowOrder = currentOrder
-                            
-                            if let newMaster = tempWindows.first {
-                                windowManager.switchFocusedWindow(to: newMaster.id)
-                            }
+                }
+                .onEnded { _ in
+                    if let targetIdx = hoveringIndex, let startIdx = dragStartIndex, targetIdx != startIdx {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            let moving = tempWindows.remove(at: startIdx)
+                            tempWindows.insert(moving, at: targetIdx)
                         }
                         
-                        draggingWindowID = nil
-                        dragStartIndex = nil
-                        activeDragIndex = nil
-                        dragOffset = .zero
-                        draggedWindow = nil
+                        let targetIDs = Set(tempWindows.map { $0.id })
+                        var currentOrder = windowManager.customWindowOrder
+                        
+                        let insertIndex = currentOrder.firstIndex { targetIDs.contains($0) } ?? currentOrder.count
+                        currentOrder.removeAll { targetIDs.contains($0) }
+                        currentOrder.insert(contentsOf: tempWindows.map { $0.id }, at: insertIndex)
+                        
+                        windowManager.customWindowOrder = currentOrder
+                        
+                        if let newMaster = tempWindows.first {
+                            windowManager.switchFocusedWindow(to: newMaster.id)
+                        }
                     }
-            )
+                    
+                    draggingWindowID = nil
+                    dragStartIndex = nil
+                    hoveringIndex = nil
+                    dragOffset = .zero
+                    draggedWindow = nil
+                }
+        )
     }
 }
 
@@ -761,7 +823,7 @@ class WindowNumberOverlayPanel: NSPanel {
             backing: .buffered,
             defer: false
         )
-        self.level = .floating
+        self.level = .screenSaver
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = false
