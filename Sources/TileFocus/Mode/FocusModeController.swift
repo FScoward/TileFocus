@@ -192,11 +192,11 @@ final class FocusModeController {
             $0.pid == pid && ($0.title == title || title.isEmpty)
         }) ?? managed.first(where: { $0.pid == pid }) {
             
-            // ★ Option + Command キーが押されている場合は、フォーカス移動だけでなくマスター（王冠）にも設定する
+            // ★ Control + Shift キーが押されている場合は、フォーカス移動だけでなくマスター（王冠）にも設定する
             let flags = NSEvent.modifierFlags
-            let isCmdOptionPressed = flags.contains(.option) && flags.contains(.command)
-            if isCmdOptionPressed {
-                Log.info(Self.tag, "handleFocusChanged: Option+Commandキー押下を検知。マスターに設定 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
+            let isCtrlShiftPressed = flags.contains(.control) && flags.contains(.shift)
+            if isCtrlShiftPressed {
+                Log.info(Self.tag, "handleFocusChanged: Control+Shiftキー押下を検知。マスターに設定 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
                 windowManager.setMasterWindow(to: match.id)
             } else {
                 if match.id != focusedWindowID {
