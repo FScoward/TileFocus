@@ -233,6 +233,10 @@ struct StageTopBarView: View {
     @State private var hoveredWindowID: String?
     @State private var draggedWindow: ManagedWindow?
     @State private var tempWindows: [ManagedWindow] = []
+    @State private var draggingWindowID: String? = nil
+    @State private var dragStartIndex: Int? = nil
+    @State private var activeDragIndex: Int? = nil
+    @State private var dragOffset: CGSize = .zero
     private let overlayManager = LayoutOverlayManager()
 
 
@@ -474,14 +478,13 @@ struct StageTopBarView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.001))
         .contentShape(Rectangle())
-        .onDrop(of: [UTType.text], delegate: DummyDropDelegate(draggedItem: $draggedWindow))
         .animation(.easeInOut(duration: 0.18), value: windowManager.isStagedWindowsBarExpanded)
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .onAppear {
             tempWindows = allWindowsForScreen
         }
         .onChange(of: allWindowsForScreen) { newValue in
-            if draggedWindow == nil {
+            if draggingWindowID == nil {
                 tempWindows = newValue
             }
         }
@@ -509,7 +512,6 @@ struct StageTopBarView: View {
         let isStaged = windowManager.stagedWindows.contains(where: { $0.id == window.id })
         // 現在マスター（メイン）に設定されているかどうか
         let isMaster = windowManager.masterWindow?.id == window.id
-        let isDragging = draggedWindow?.id == window.id
 
         
         // 型推論エラーを避けるためにスタイル変数を切り出し
@@ -679,74 +681,75 @@ struct StageTopBarView: View {
         )
         .frame(width: 140) // グリッドの各アイテム幅を140pxに固定
         .contentShape(Rectangle())
-        .opacity(isDragging ? 0.35 : 1.0)
-
+        .opacity(draggingWindowID == window.id ? 0.6 : (draggedWindow != nil ? 0.35 : 1.0))
 
         itemContent
-            .onDrag {
-                self.draggedWindow = window
-                return NSItemProvider(item: window.id as NSString, typeIdentifier: UTType.text.identifier)
-            }
-            .onDrop(of: [UTType.text], delegate: WindowDropDelegate(
-                item: window,
-                tempWindows: $tempWindows,
-                windowManager: windowManager,
-                draggedItem: $draggedWindow
-            ))
+            .offset(draggingWindowID == window.id ? dragOffset : .zero)
+            .zIndex(draggingWindowID == window.id ? 100 : 1)
+            .gesture(
+                DragGesture(minimumDistance: 5)
+                    .onChanged { value in
+                        if dragStartIndex == nil {
+                            if let idx = tempWindows.firstIndex(where: { $0.id == window.id }) {
+                                dragStartIndex = idx
+                                activeDragIndex = idx
+                                draggingWindowID = window.id
+                                draggedWindow = window
+                            }
+                        }
+                        
+                        dragOffset = value.translation
+                        
+                        guard let startIdx = dragStartIndex, let activeIdx = activeDragIndex else { return }
+                        
+                        let colWidth: CGFloat = 146
+                        let rowHeight: CGFloat = 36
+                        
+                        let startCol = startIdx % 4
+                        let startRow = startIdx / 4
+                        
+                        let deltaCol = Int(round(value.translation.width / colWidth))
+                        let deltaRow = Int(round(value.translation.height / rowHeight))
+                        
+                        let targetCol = max(0, min(3, startCol + deltaCol))
+                        let targetRow = max(0, startRow + deltaRow)
+                        let targetIndex = min(tempWindows.count - 1, max(0, targetRow * 4 + targetCol))
+                        
+                        if targetIndex != activeIdx {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                let moving = tempWindows.remove(at: activeIdx)
+                                tempWindows.insert(moving, at: targetIndex)
+                                activeDragIndex = targetIndex
+                            }
+                        }
+                    }
+                    .onEnded { _ in
+                        if let _ = draggingWindowID {
+                            let targetIDs = Set(tempWindows.map { $0.id })
+                            var currentOrder = windowManager.customWindowOrder
+                            
+                            let insertIndex = currentOrder.firstIndex { targetIDs.contains($0) } ?? currentOrder.count
+                            currentOrder.removeAll { targetIDs.contains($0) }
+                            currentOrder.insert(contentsOf: tempWindows.map { $0.id }, at: insertIndex)
+                            
+                            windowManager.customWindowOrder = currentOrder
+                            
+                            if let newMaster = tempWindows.first {
+                                windowManager.switchFocusedWindow(to: newMaster.id)
+                            }
+                        }
+                        
+                        draggingWindowID = nil
+                        dragStartIndex = nil
+                        activeDragIndex = nil
+                        dragOffset = .zero
+                        draggedWindow = nil
+                    }
+            )
     }
 }
 
-struct WindowDropDelegate: DropDelegate {
-    let item: ManagedWindow
-    @Binding var tempWindows: [ManagedWindow]
-    let windowManager: WindowManager
-    @Binding var draggedItem: ManagedWindow?
 
-    func dropEntered(info: DropInfo) {
-        guard let draggedItem = draggedItem else { return }
-        guard draggedItem.id != item.id else { return }
-
-        guard let fromIndex = tempWindows.firstIndex(where: { $0.id == draggedItem.id }),
-              let toIndex = tempWindows.firstIndex(where: { $0.id == item.id }) else {
-            return
-        }
-
-        if fromIndex != toIndex {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                tempWindows.swapAt(fromIndex, toIndex)
-            }
-        }
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        // ドロップ確定時に WindowManager のオーダーを更新（他のスクリーンに属するウィンドウ順序を消去しないようマージする）
-        let targetIDs = Set(tempWindows.map { $0.id })
-        var currentOrder = windowManager.customWindowOrder
-        
-        let insertIndex = currentOrder.firstIndex { targetIDs.contains($0) } ?? currentOrder.count
-        currentOrder.removeAll { targetIDs.contains($0) }
-        currentOrder.insert(contentsOf: tempWindows.map { $0.id }, at: insertIndex)
-        
-        windowManager.customWindowOrder = currentOrder
-        
-        // 先頭（インデックス0）に並べ替えられたウィンドウを新しいマスター（王冠）に設定
-        if let newMaster = tempWindows.first {
-            windowManager.switchFocusedWindow(to: newMaster.id)
-        }
-        
-        // customWindowOrder の変更が反映され、allWindowsForScreen が更新されるのを待ってから nil に戻すことで
-        // 旧順序による onChange での tempWindows 上書きを防ぐ
-        DispatchQueue.main.async {
-            self.draggedItem = nil
-        }
-        return true
-    }
-
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        return DropProposal(operation: .move)
-    }
-}
 
 // MARK: - Layout Window Overlay
 
@@ -832,15 +835,6 @@ class LayoutOverlayManager {
 
 // MARK: - DummyDropDelegate
 
-struct DummyDropDelegate: DropDelegate {
-    @Binding var draggedItem: ManagedWindow?
-    
-    func performDrop(info: DropInfo) -> Bool {
-        draggedItem = nil
-        return true
-    }
-    
-    func dropEntered(info: DropInfo) {}
-}
+
 
 
