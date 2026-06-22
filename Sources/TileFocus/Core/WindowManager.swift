@@ -341,6 +341,40 @@ final class WindowManager: ObservableObject {
         focusController?.switchMainWindow(to: windowID)
     }
 
+    /// Focus Mode において、ウィンドウをアクティブにするが、マスター（王冠）は切り替えない（通常クリック時など）
+    func activateWindowWithoutChangingMaster(to windowID: String) {
+        guard currentMode == .focus else {
+            Log.warn("WindowManager", "activateWindowWithoutChangingMaster: Focus Mode でないためスキップ")
+            return
+        }
+        Log.info("WindowManager", "activateWindowWithoutChangingMaster(to: \(windowID))")
+        focusedWindowID = windowID
+        focusController?.switchFocusedWindowOnly(to: windowID)
+        
+        // 物理的にウィンドウを最前面にする
+        if let window = (managedWindows + stagedWindows).first(where: { $0.id == windowID }),
+           let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) {
+            AccessibilityHelper.focus(window: axWindow)
+        }
+    }
+
+    /// Focus Mode において、指定されたウィンドウをマスター（王冠）ウィンドウに設定し、フォーカスも当てる
+    func setMasterWindow(to windowID: String) {
+        guard currentMode == .focus else {
+            Log.warn("WindowManager", "setMasterWindow: Focus Mode でないためスキップ")
+            return
+        }
+        Log.info("WindowManager", "setMasterWindow(to: \(windowID))")
+        focusedWindowID = windowID
+        focusController?.switchMainWindow(to: windowID)
+        
+        // 物理的にウィンドウを最前面にする
+        if let window = (managedWindows + stagedWindows).first(where: { $0.id == windowID }),
+           let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) {
+            AccessibilityHelper.focus(window: axWindow)
+        }
+    }
+
     // MARK: - Stage Control
 
     /// フォーカス中のウィンドウを格納

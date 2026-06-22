@@ -578,7 +578,13 @@ struct StageTopBarView: View {
                 if isStaged {
                     windowManager.unstageWindow(window)
                 }
-                windowManager.switchFocusedWindow(to: window.id)
+                
+                let isOptionPressed = NSEvent.modifierFlags.contains(.option)
+                if isOptionPressed {
+                    windowManager.setMasterWindow(to: window.id)
+                } else {
+                    windowManager.activateWindowWithoutChangingMaster(to: window.id)
+                }
             } label: {
                 HStack(spacing: 4) {
                     ZStack {

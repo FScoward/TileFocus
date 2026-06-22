@@ -169,6 +169,14 @@ final class FocusModeController {
         applyLayout()
     }
 
+    /// フォーカスウィンドウのみを切り替え、マスター（王冠）は変更しない
+    func switchFocusedWindowOnly(to id: String) {
+        guard let windowManager, windowManager.currentMode == .focus else { return }
+        Log.info(Self.tag, "  フォーカス切り替え（マスター変更なし）: \(focusedWindowID ?? "nil") → \(id)")
+        setFocusedWindowID(id)
+        applyLayout()
+    }
+
     /// WindowObserver からフォーカス変更の通知を受け取る（同じアプリ内のウィンドウ切り替え等に対応）
     func handleFocusChanged(pid: pid_t, title: String) {
         guard !isApplyingLayout else {
