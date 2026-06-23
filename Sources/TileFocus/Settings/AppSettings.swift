@@ -14,6 +14,20 @@ enum StageMethod: String, CaseIterable, Identifiable {
     }
 }
 
+/// 王冠（マスターウィンドウ）の切り替え方法
+enum CrownSwapTrigger: String, CaseIterable, Identifiable {
+    case clickOnly
+    case ctrlShiftClick
+
+    var id: String { rawValue }
+    var displayName: String {
+        switch self {
+        case .clickOnly: return "クリックのみ"
+        case .ctrlShiftClick: return "Control + Shift + クリック"
+        }
+    }
+}
+
 /// アプリ設定の永続化（UserDefaults ラッパー）
 final class AppSettings: ObservableObject {
 
@@ -32,6 +46,7 @@ final class AppSettings: ObservableObject {
         static let stageMethod = "stageMethod"
         static let mainWidthRatio = "mainWidthRatio"
         static let focusStylesByMonitor = "focusStylesByMonitor"
+        static let crownSwapTrigger = "crownSwapTrigger"
     }
 
     // MARK: - Settings
@@ -54,6 +69,11 @@ final class AppSettings: ObservableObject {
     /// 格納方法
     @Published var stageMethod: StageMethod {
         didSet { defaults.set(stageMethod.rawValue, forKey: Keys.stageMethod) }
+    }
+
+    /// 王冠の切り替え方法
+    @Published var crownSwapTrigger: CrownSwapTrigger {
+        didSet { defaults.set(crownSwapTrigger.rawValue, forKey: Keys.crownSwapTrigger) }
     }
 
     /// タイリングの外側ギャップ（px）
@@ -100,6 +120,10 @@ final class AppSettings: ObservableObject {
         )
 
         defaultLayoutIndex = defaults.integer(forKey: Keys.defaultLayoutIndex)
+
+        crownSwapTrigger = CrownSwapTrigger(
+            rawValue: defaults.string(forKey: Keys.crownSwapTrigger) ?? ""
+        ) ?? .clickOnly
     }
 
     /// TilingGap 構造体として返す

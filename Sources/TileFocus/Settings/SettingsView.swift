@@ -49,6 +49,14 @@ private struct GeneralSettingsTab: View {
                 }
             }
 
+            Section("王冠（マスターウィンドウ）の切り替え") {
+                Picker("切り替え方法", selection: $settings.crownSwapTrigger) {
+                    ForEach(CrownSwapTrigger.allCases) { trigger in
+                        Text(trigger.displayName).tag(trigger)
+                    }
+                }
+            }
+
             Section("レイアウト (Focus Mode)") {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {

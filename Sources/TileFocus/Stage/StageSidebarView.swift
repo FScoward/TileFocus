@@ -736,7 +736,19 @@ struct StageTopBarView: View {
                 if isStaged {
                     windowManager.unstageWindow(window)
                 }
-                windowManager.setMasterWindow(to: window.id)
+                
+                let trigger = AppSettings.shared.crownSwapTrigger
+                if trigger == .clickOnly {
+                    windowManager.setMasterWindow(to: window.id)
+                } else {
+                    let modifiers = NSEvent.modifierFlags
+                    let isCtrlShiftPressed = modifiers.contains(.control) && modifiers.contains(.shift)
+                    if isCtrlShiftPressed {
+                        windowManager.setMasterWindow(to: window.id)
+                    } else {
+                        windowManager.activateWindowWithoutChangingMaster(to: window.id)
+                    }
+                }
             }
             .onHover { hovering in
                 hoveredWindowID = hovering ? window.id : nil
