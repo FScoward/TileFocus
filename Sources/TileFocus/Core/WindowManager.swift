@@ -56,7 +56,7 @@ final class WindowManager: ObservableObject {
     /// Focus Mode の現在のスタイル（中央・左・右メイン、個別設定が無い場合のデフォルト）
     @Published var focusStyle: FocusStyle = .centered {
         didSet {
-            if currentMode == .focus {
+            if currentMode == .focus || currentMode == .float {
                 focusController?.scheduleLayoutUpdate()
             }
         }
@@ -96,7 +96,7 @@ final class WindowManager: ObservableObject {
         AppSettings.shared.focusStylesByMonitor = dict
         
         // レイアウト更新のトリガー
-        if currentMode == .focus {
+        if currentMode == .focus || currentMode == .float {
             focusController?.scheduleLayoutUpdate()
         }
         objectWillChange.send()
@@ -106,7 +106,7 @@ final class WindowManager: ObservableObject {
         switch currentMode {
         case .tiling:
             tilingController?.retile()
-        case .focus:
+        case .focus, .float:
             focusController?.scheduleLayoutUpdate()
         case .off:
             break
@@ -207,7 +207,7 @@ final class WindowManager: ObservableObject {
             break
         case .tiling:
             tilingController?.activate()
-        case .focus:
+        case .focus, .float:
             focusController?.activate()
         }
 
@@ -220,7 +220,7 @@ final class WindowManager: ObservableObject {
             break
         case .tiling:
             tilingController?.deactivate()
-        case .focus:
+        case .focus, .float:
             focusController?.deactivate()
         }
     }
@@ -316,9 +316,9 @@ final class WindowManager: ObservableObject {
             } else {
                 Log.info(tag, "  \(managed.appName) はすでにマスターです")
             }
-        case .focus:
-            // Focus Mode: FocusModeController に委譲
-            Log.info(tag, "  Focus Mode → switchMainWindow(to: \(managed.id))")
+        case .focus, .float:
+            // Focus & Float Mode: FocusModeController に委譲
+            Log.info(tag, "  \(currentMode.displayName) → switchMainWindow(to: \(managed.id))")
             focusController?.switchMainWindow(to: managed.id)
         case .off:
             break
@@ -327,7 +327,7 @@ final class WindowManager: ObservableObject {
 
     /// 現在のマスターウィンドウの情報を返す
     var masterWindow: ManagedWindow? {
-        if currentMode == .focus {
+        if currentMode == .focus || currentMode == .float {
             return (managedWindows + stagedWindows).first { $0.id == masterWindowID }
         } else {
             return managedWindows.first { $0.state != .staged }
@@ -336,8 +336,8 @@ final class WindowManager: ObservableObject {
 
     /// Focus Mode でフォーカスウィンドウを切り替える（MenuBar などから呼ばれる）
     func switchFocusedWindow(to windowID: String) {
-        guard currentMode == .focus else {
-            Log.warn("WindowManager", "switchFocusedWindow: Focus Mode でないためスキップ")
+        guard currentMode == .focus || currentMode == .float else {
+            Log.warn("WindowManager", "switchFocusedWindow: Focus/Float Mode でないためスキップ")
             return
         }
         Log.info("WindowManager", "switchFocusedWindow(to: \(windowID))")
@@ -345,10 +345,10 @@ final class WindowManager: ObservableObject {
         focusController?.switchMainWindow(to: windowID)
     }
 
-    /// Focus Mode において、ウィンドウをアクティブにするが、マスター（王冠）は切り替えない（通常クリック時など）
+    /// Focus/Float Mode において、ウィンドウをアクティブにするが、マスター（王冠）は切り替えない（通常クリック時など）
     func activateWindowWithoutChangingMaster(to windowID: String) {
-        guard currentMode == .focus else {
-            Log.warn("WindowManager", "activateWindowWithoutChangingMaster: Focus Mode でないためスキップ")
+        guard currentMode == .focus || currentMode == .float else {
+            Log.warn("WindowManager", "activateWindowWithoutChangingMaster: Focus/Float Mode でないためスキップ")
             return
         }
         Log.info("WindowManager", "activateWindowWithoutChangingMaster(to: \(windowID))")
@@ -362,10 +362,10 @@ final class WindowManager: ObservableObject {
         }
     }
 
-    /// Focus Mode において、指定されたウィンドウをマスター（王冠）ウィンドウに設定し、フォーカスも当てる
+    /// Focus/Float Mode において、指定されたウィンドウをマスター（王冠）ウィンドウに設定し、フォーカスも当てる
     func setMasterWindow(to windowID: String) {
-        guard currentMode == .focus else {
-            Log.warn("WindowManager", "setMasterWindow: Focus Mode でないためスキップ")
+        guard currentMode == .focus || currentMode == .float else {
+            Log.warn("WindowManager", "setMasterWindow: Focus/Float Mode でないためスキップ")
             return
         }
         Log.info("WindowManager", "setMasterWindow(to: \(windowID))")
@@ -400,7 +400,7 @@ final class WindowManager: ObservableObject {
 
     /// Focus Mode においてレイアウトの再計算を要求する
     func requestFocusLayoutUpdate() {
-        guard currentMode == .focus else { return }
+        guard currentMode == .focus || currentMode == .float else { return }
         focusController?.scheduleLayoutUpdate()
     }
 
@@ -558,7 +558,7 @@ final class WindowManager: ObservableObject {
         stagedWindows.removeAll { $0.id == id }
         if currentMode == .tiling {
             tilingController?.retile()
-        } else if currentMode == .focus {
+        } else if currentMode == .focus || currentMode == .float {
             focusController?.handleWindowClosed(id: id)
         }
     }
@@ -571,7 +571,7 @@ final class WindowManager: ObservableObject {
         
         if currentMode == .tiling {
             tilingController?.retile()
-        } else if currentMode == .focus {
+        } else if currentMode == .focus || currentMode == .float {
             requestFocusLayoutUpdate()
         }
     }
@@ -689,7 +689,7 @@ extension WindowManager: WindowObserverDelegate {
         title: String
     ) {
         Task { @MainActor in
-            if currentMode == .focus {
+            if currentMode == .focus || currentMode == .float {
                 focusController?.handleFocusChanged(pid: pid, title: title)
             }
         }

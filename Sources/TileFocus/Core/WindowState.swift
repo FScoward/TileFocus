@@ -21,11 +21,12 @@ enum AppMode: String, Identifiable {
     case off
     case tiling
     case focus
+    case float
 
     var id: String { rawValue }
 
     static var allCases: [AppMode] {
-        [.off, .focus]
+        [.off, .focus, .float]
     }
 
     var displayName: String {
@@ -33,6 +34,7 @@ enum AppMode: String, Identifiable {
         case .off: return "オフ"
         case .tiling: return "Tiling Mode"
         case .focus: return "Focus Mode"
+        case .float: return "Float Mode"
         }
     }
 
@@ -41,6 +43,7 @@ enum AppMode: String, Identifiable {
         case .off: return "rectangle.slash"
         case .tiling: return "rectangle.3.group"
         case .focus: return "rectangle.center.inset.filled"
+        case .float: return "square.dashed"
         }
     }
 
@@ -49,6 +52,7 @@ enum AppMode: String, Identifiable {
         case .off: return .secondary
         case .tiling: return .blue
         case .focus: return .purple
+        case .float: return .green
         }
     }
 
@@ -57,6 +61,7 @@ enum AppMode: String, Identifiable {
         case .off: return ""
         case .tiling: return "⌃⌘T"
         case .focus: return "⌃⌘F"
+        case .float: return "⌃⌘L"
         }
     }
 }

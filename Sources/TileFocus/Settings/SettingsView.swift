@@ -125,6 +125,7 @@ private struct TilingSettingsTab: View {
 private struct HotKeySettingsTab: View {
     private let hotKeys: [(String, String)] = [
         ("Focus Mode ON/OFF", "⌃⌘F"),
+        ("Float Mode ON/OFF", "⌃⌘L"),
         ("フォーカス中のウィンドウを格納", "⌃⌘S"),
         ("格納ウィンドウを全復帰", "⌃⌘R"),
         ("次のレイアウト", "⌃⌘→"),

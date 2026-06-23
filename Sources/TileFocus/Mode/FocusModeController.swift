@@ -19,6 +19,7 @@ final class FocusModeController {
 
     private var focusedWindowID: String?
     private var masterWindowID: String?
+    private var floatModeOriginalFrames: [String: CGRect] = [:]
     private var focusHistory: [String] = []
     private var workspaceObservers: [NSObjectProtocol] = []
     private var updateWorkItem: DispatchWorkItem?
@@ -111,6 +112,21 @@ final class FocusModeController {
             windowManager.unstageAllWindows()
         }
 
+        // Float モードで元のフレームに戻しきれなかったものを復帰させる
+        if let windowManager {
+            let all = windowManager.managedWindows + windowManager.stagedWindows
+            for (windowID, originalFrame) in floatModeOriginalFrames {
+                if let window = all.first(where: { $0.id == windowID }),
+                   let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) {
+                    Log.info(Self.tag, "[FloatMode] deactivate 時のフレーム復帰: \(window.appName) -> \(originalFrame)")
+                    windowManager.setTilingInProgress(true)
+                    AccessibilityHelper.setFrame(originalFrame, to: axWindow)
+                    windowManager.setTilingInProgress(false)
+                }
+            }
+        }
+        floatModeOriginalFrames = [:]
+
         focusedWindowID = nil
         setMasterWindowID(nil)
     }
@@ -198,7 +214,7 @@ final class FocusModeController {
 
     /// フォーカスウィンドウのみを切り替え、マスター（王冠）は変更しない
     func switchFocusedWindowOnly(to id: String) {
-        guard let windowManager, windowManager.currentMode == .focus else { return }
+        guard let windowManager, (windowManager.currentMode == .focus || windowManager.currentMode == .float) else { return }
         Log.info(Self.tag, "  フォーカス切り替え（マスター変更なし）: \(focusedWindowID ?? "nil") → \(id)")
         setFocusedWindowID(id)
         applyLayout()
@@ -328,9 +344,76 @@ final class FocusModeController {
         DispatchQueue.main.asyncAfter(deadline: .now() + debounce, execute: item)
     }
 
+    private func applyFloatLayout() {
+        guard let windowManager else { return }
+        
+        let allWindows = windowManager.managedWindows + windowManager.stagedWindows
+        guard !allWindows.isEmpty else { return }
+        
+        // 1. 王冠を外されたウィンドウのフレームを復帰させる
+        for window in allWindows {
+            if window.id != masterWindowID {
+                if let originalFrame = floatModeOriginalFrames[window.id] {
+                    if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) {
+                        Log.info(Self.tag, "[FloatMode] 王冠が外れたため元のフレームに復帰: \(window.appName) -> \(originalFrame)")
+                        windowManager.setTilingInProgress(true)
+                        AccessibilityHelper.setFrame(originalFrame, to: axWindow)
+                        windowManager.setTilingInProgress(false)
+                    }
+                    floatModeOriginalFrames.removeValue(forKey: window.id)
+                }
+            }
+        }
+        
+        // 2. 現在の王冠ウィンドウ（masterWindowID）を中央に特定%で表示する
+        if let masterID = masterWindowID,
+           let masterWindow = allWindows.first(where: { $0.id == masterID }),
+           let axWindow = AccessibilityHelper.findWindow(for: masterWindow.pid, windowID: masterWindow.windowID, title: masterWindow.title) {
+            
+            // 現在の物理的なフレームを取得して、まだ保存されていなければ保存する
+            if floatModeOriginalFrames[masterID] == nil {
+                if let currentFrame = AccessibilityHelper.getFrame(of: axWindow) {
+                    floatModeOriginalFrames[masterID] = currentFrame
+                    Log.info(Self.tag, "[FloatMode] 王冠付与前のフレームを保存: \(masterWindow.appName) -> \(currentFrame)")
+                }
+            }
+            
+            // 現在アクティブなスクリーンを特定
+            let currentFrame = AccessibilityHelper.getFrame(of: axWindow) ?? masterWindow.frame
+            let screen = screenManager.screen(containingAXFrame: currentFrame)
+            let visibleFrame = screenManager.visibleFrameInAX(for: screen)
+            
+            // 特定%
+            let ratio = AppSettings.shared.mainWidthRatio
+            let targetWidth = visibleFrame.width * ratio
+            
+            // 高さは画面サイズから余白を引いたもの
+            let outerGap: CGFloat = 8.0
+            let targetHeight = visibleFrame.height - outerGap * 2
+            let targetX = visibleFrame.minX + (visibleFrame.width - targetWidth) / 2
+            let targetY = visibleFrame.minY + outerGap
+            
+            let targetFrame = CGRect(x: targetX, y: targetY, width: targetWidth, height: targetHeight)
+            Log.info(Self.tag, "[FloatMode] 王冠ウィンドウを中央に配置: \(masterWindow.appName) -> \(targetFrame)")
+            
+            windowManager.setTilingInProgress(true)
+            AccessibilityHelper.setFrame(targetFrame, to: axWindow)
+            windowManager.setTilingInProgress(false)
+            
+            // アクティブにする
+            AccessibilityHelper.focus(window: axWindow)
+        }
+    }
+
     func applyLayout() {
         isApplyingLayout = true
         guard let windowManager else { return }
+        
+        if windowManager.currentMode == .float {
+            applyFloatLayout()
+            isApplyingLayout = false
+            return
+        }
         
         // staged も含めた全ウィンドウを対象とする（ホバーバーの表示順と同期するため）
         let allWindows = windowManager.managedWindows + windowManager.stagedWindows

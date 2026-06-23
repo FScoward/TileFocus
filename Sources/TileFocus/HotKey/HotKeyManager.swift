@@ -39,6 +39,12 @@ final class HotKeyManager {
             Task { @MainActor in self?.windowManager?.switchMode(to: .focus) }
         }
 
+        // Float Mode ON/OFF: Cmd+Ctrl+L
+        let floatHK = HotKey(key: Key.l, modifiers: NSEvent.ModifierFlags([.command, .control]))
+        floatHK.keyDownHandler = { [weak self] in
+            Task { @MainActor in self?.windowManager?.switchMode(to: .float) }
+        }
+
         // フォーカス中のウィンドウを格納: Cmd+Ctrl+S
         let stageHK = HotKey(key: Key.s, modifiers: NSEvent.ModifierFlags([.command, .control]))
         stageHK.keyDownHandler = { [weak self] in
@@ -69,7 +75,7 @@ final class HotKeyManager {
             Task { @MainActor in self?.windowManager?.promoteCurrentWindowToMaster() }
         }
 
-        hotKeys = [focusHK, stageHK, restoreHK, nextLayoutHK, prevLayoutHK, masterHK]
+        hotKeys = [focusHK, floatHK, stageHK, restoreHK, nextLayoutHK, prevLayoutHK, masterHK]
         print("[HotKeyManager] \(hotKeys.count) 個のホットキーを登録")
     }
 

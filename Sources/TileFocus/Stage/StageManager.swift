@@ -56,7 +56,7 @@ final class StageManager {
         // タイリング中なら残りのウィンドウを再タイリング
         if windowManager.currentMode == .tiling {
             windowManager.requestRetile()
-        } else if windowManager.currentMode == .focus {
+        } else if windowManager.currentMode == .focus || windowManager.currentMode == .float {
             windowManager.requestFocusLayoutUpdate()
         }
     }
@@ -105,7 +105,7 @@ final class StageManager {
         // タイリング中なら全体を再タイリング
         if windowManager.currentMode == .tiling {
             windowManager.requestRetile()
-        } else if windowManager.currentMode == .focus {
+        } else if windowManager.currentMode == .focus || windowManager.currentMode == .float {
             windowManager.requestFocusLayoutUpdate()
         }
 
