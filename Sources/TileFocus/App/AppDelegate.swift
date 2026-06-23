@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func checkAccessibilityPermission() {
         guard PermissionChecker.isAccessibilityEnabled else {
             showPermissionAlert()
+            NSApp.terminate(nil) // 権限が不足している場合はアプリを閉じる
             return
         }
         // 権限あり → ウィンドウ監視を開始
