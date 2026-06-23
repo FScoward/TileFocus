@@ -69,10 +69,26 @@ private struct GeneralSettingsTab: View {
                     Slider(value: $settings.mainWidthRatio, in: 0.3...0.8, step: 0.05)
                 }
             }
+
+            Section("レイアウト (Float Mode)") {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("中央ウィンドウの表示比率")
+                        Spacer()
+                        Text("\(Int(settings.floatModeRatio * 100))%")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $settings.floatModeRatio, in: 0.3...0.8, step: 0.05)
+                }
+            }
         }
         .formStyle(.grouped)
         .padding()
         .onChange(of: settings.mainWidthRatio) { _ in
+            WindowManager.shared.requestFocusLayoutUpdate()
+        }
+        .onChange(of: settings.floatModeRatio) { _ in
             WindowManager.shared.requestFocusLayoutUpdate()
         }
     }
