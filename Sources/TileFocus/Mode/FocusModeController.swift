@@ -202,6 +202,13 @@ final class FocusModeController {
             }
         }
 
+        if let windowManager, windowManager.currentMode == .float, masterWindowID == windowID {
+            Log.info(Self.tag, "  [FloatMode] すでにマスターのため王冠を解除します: \(windowID)")
+            setMasterWindowID(nil)
+            applyLayout()
+            return
+        }
+
         guard masterWindowID != windowID || focusedWindowID != windowID else {
             Log.debug(Self.tag, "switchMainWindow: 変更なし (already master and focused)")
             return
