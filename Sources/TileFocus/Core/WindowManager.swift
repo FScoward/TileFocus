@@ -31,10 +31,11 @@ final class WindowManager: ObservableObject {
     /// Focus Mode における現在のマスター（メイン）ウィンドウ ID
     @Published private(set) var masterWindowID: String? {
         didSet {
-            if let activeScreen = NSScreen.main ?? NSScreen.screens.first {
+            if let activeScreen = getActiveScreen() {
                 let key = AccessibilityHelper.getActiveSpaceUUID(for: activeScreen) ?? activeScreen.identifier
                 if let masterWindowID {
                     masterWindowIDsBySpace[key] = masterWindowID
+                    Log.debug("WindowManager", "masterWindowID didSet: space=\(key) masterWindowID=\(masterWindowID)")
                 } else {
                     masterWindowIDsBySpace.removeValue(forKey: key)
                 }
@@ -168,10 +169,13 @@ final class WindowManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            Task { @MainActor in
-                Log.info("WindowManager", "仮想デスクトップの切り替えを検知しました。ウィンドウリストを再構成します。")
-                self.refreshWindowList()
-                self.triggerLayoutUpdate()
+            // 仮想スペース切り替え直後はOS側の状態が不安定なため、0.2 秒のディレイを設ける
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                Task { @MainActor in
+                    Log.info("WindowManager", "仮想デスクトップの切り替えを検知しました。ウィンドウリストを再構成します。")
+                    self.refreshWindowList()
+                    self.triggerLayoutUpdate()
+                }
             }
         }
         self.workspaceObservers = [spaceToken]
@@ -488,10 +492,23 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    /// 現在アクティブな操作スクリーンを特定する（フォーカスされているウィンドウがあればその座標から、無ければメインスクリーン）
+    private func getActiveScreen() -> NSScreen? {
+        let screenManager = ScreenManager()
+        if let focusedID = focusedWindowID,
+           let focusedWindow = (managedWindows + stagedWindows).first(where: { $0.id == focusedID }) {
+            let frame = focusedWindow.frameBeforeStaging ?? focusedWindow.frame
+            return screenManager.screen(containingAXFrame: frame)
+        }
+        return NSScreen.main ?? NSScreen.screens.first
+    }
+
     /// 現在のアクティブなスペースに保存されているマスターウィンドウIDを復元する
     private func restoreMasterWindowIDForActiveSpace() {
-        guard let activeScreen = NSScreen.main ?? NSScreen.screens.first else { return }
+        guard let activeScreen = getActiveScreen() else { return }
         let key = AccessibilityHelper.getActiveSpaceUUID(for: activeScreen) ?? activeScreen.identifier
+        
+        Log.debug("WindowManager", "restoreMasterWindowIDForActiveSpace: key=\(key) savedMasterID=\(masterWindowIDsBySpace[key] ?? "nil")")
         
         if let savedMasterID = masterWindowIDsBySpace[key] {
             // 保存されていたマスターウィンドウが、現在のウィンドウリスト（managedWindows または stagedWindows）に実在するかチェック
