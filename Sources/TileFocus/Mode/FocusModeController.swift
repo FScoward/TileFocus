@@ -390,15 +390,12 @@ final class FocusModeController {
             let screen = screenManager.screen(containingAXFrame: currentFrame)
             let visibleFrame = screenManager.visibleFrameInAX(for: screen)
             
-            // 特定%
+            // 特定% (幅・高さともに ratio 割合にする)
             let ratio = AppSettings.shared.mainWidthRatio
             let targetWidth = visibleFrame.width * ratio
-            
-            // 高さは画面サイズから余白を引いたもの
-            let outerGap: CGFloat = 8.0
-            let targetHeight = visibleFrame.height - outerGap * 2
+            let targetHeight = visibleFrame.height * ratio
             let targetX = visibleFrame.minX + (visibleFrame.width - targetWidth) / 2
-            let targetY = visibleFrame.minY + outerGap
+            let targetY = visibleFrame.minY + (visibleFrame.height - targetHeight) / 2
             
             let targetFrame = CGRect(x: targetX, y: targetY, width: targetWidth, height: targetHeight)
             Log.info(Self.tag, "[FloatMode] 王冠ウィンドウを中央に配置: \(masterWindow.appName) -> \(targetFrame)")
