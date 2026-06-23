@@ -77,6 +77,12 @@ struct ScreenManager {
         )
     }
 
+    /// AppKit 座標 (左下原点) → Accessibility 座標 (左上原点) の変換
+    func appKitToAX(_ point: CGPoint) -> CGPoint {
+        let primaryMaxY = primaryScreen.frame.maxY
+        return CGPoint(x: point.x, y: primaryMaxY - point.y)
+    }
+
     /// Accessibility 座標 → AppKit 座標の変換
     func axToAppKit(_ rect: CGRect) -> CGRect {
         let primaryMaxY = primaryScreen.frame.maxY

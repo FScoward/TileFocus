@@ -25,6 +25,8 @@ final class FocusModeController {
     /// applyLayout() 実行中フラグ
     /// この間は didActivateApplicationNotification による focusedWindowID 更新を抑制する
     private var isApplyingLayout: Bool = false
+    private var globalClickMonitor: Any?
+    private var localClickMonitor: Any?
 
     // MARK: - Init
 
@@ -63,8 +65,23 @@ final class FocusModeController {
             }
         }
 
+        // マウスクリック監視を追加（Control + Shift + ウィンドウクリックで王冠設定）
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+            guard let self else { return }
+            Task { @MainActor in
+                self.handleMouseClick(event: event)
+            }
+        }
+        localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+            guard let self else { return event }
+            Task { @MainActor in
+                self.handleMouseClick(event: event)
+            }
+            return event
+        }
+
         workspaceObservers = [activateToken]
-        Log.info(Self.tag, "activate() 完了 - NSWorkspace 監視開始")
+        Log.info(Self.tag, "activate() 完了 - NSWorkspace / マウスクリック 監視開始")
     }
 
     func deactivate() {
@@ -76,6 +93,15 @@ final class FocusModeController {
             NSWorkspace.shared.notificationCenter.removeObserver(token)
         }
         workspaceObservers = []
+
+        if let monitor = globalClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalClickMonitor = nil
+        }
+        if let monitor = localClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            localClickMonitor = nil
+        }
         
         // 上部バーを非表示にする
         topBarController.hide()
@@ -192,17 +218,9 @@ final class FocusModeController {
             $0.pid == pid && ($0.title == title || title.isEmpty)
         }) ?? managed.first(where: { $0.pid == pid }) {
             
-            // ★ Control + Shift キーが押されている場合は、フォーカス移動だけでなくマスター（王冠）にも設定する
-            let flags = NSEvent.modifierFlags
-            let isCtrlShiftPressed = flags.contains(.control) && flags.contains(.shift)
-            if isCtrlShiftPressed {
-                Log.info(Self.tag, "handleFocusChanged: Control+Shiftキー押下を検知。マスターに設定 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
-                windowManager.setMasterWindow(to: match.id)
-            } else {
-                if match.id != focusedWindowID {
-                    Log.info(Self.tag, "handleFocusChanged: フォーカス自動変更 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
-                    setFocusedWindowID(match.id)
-                }
+            if match.id != focusedWindowID {
+                Log.info(Self.tag, "handleFocusChanged: フォーカス自動変更 \"\(match.appName) - \(match.title)\" (id=\(match.id))")
+                setFocusedWindowID(match.id)
             }
         }
     }
@@ -225,6 +243,49 @@ final class FocusModeController {
             Log.info(Self.tag, "  マスターウィンドウが閉じられたため、新しいマスターに設定: \(masterWindowID ?? "nil")")
         }
         scheduleLayoutUpdate()
+    }
+
+    @MainActor
+    private func handleMouseClick(event: NSEvent) {
+        let flags = event.modifierFlags
+        let isCtrlShiftPressed = flags.contains(.control) && flags.contains(.shift)
+        guard isCtrlShiftPressed else { return }
+
+        let mouseLocation = NSEvent.mouseLocation
+        let axPoint = screenManager.appKitToAX(mouseLocation)
+        
+        Log.info(Self.tag, "handleMouseClick: Control+Shiftクリック検知 mouseLocation=\(mouseLocation), axPoint=\(axPoint)")
+        
+        guard let axWindow = AccessibilityHelper.getWindow(at: axPoint) else {
+            Log.debug(Self.tag, "  マウス位置にウィンドウ要素が見つかりません")
+            return
+        }
+        
+        guard let clickWindowID = AccessibilityHelper.getWindowID(of: axWindow) else {
+            Log.debug(Self.tag, "  取得したウィンドウ要素 of CGWindowID を取得できません")
+            return
+        }
+        
+        var pid: pid_t = 0
+        AXUIElementGetPid(axWindow, &pid)
+        
+        guard let windowManager else { return }
+        
+        let allWindows = windowManager.managedWindows + windowManager.stagedWindows
+        let title = AccessibilityHelper.getTitle(of: axWindow) ?? ""
+        
+        if let match = allWindows.first(where: { $0.windowID == clickWindowID }) ??
+                       allWindows.first(where: { $0.pid == pid && $0.title == title }) {
+            Log.info(Self.tag, "  → ウィンドウ特定: \"\(match.appName) - \(match.title)\" (id=\(match.id))")
+            
+            if windowManager.stagedWindows.contains(where: { $0.id == match.id }) {
+                windowManager.unstageWindow(match)
+            }
+            
+            windowManager.setMasterWindow(to: match.id)
+        } else {
+            Log.debug(Self.tag, "  → マッチする管理ウィンドウがありません (pid=\(pid), title=\"\(title)\", windowID=\(clickWindowID))")
+        }
     }
 
     // MARK: - Private Helpers
@@ -318,14 +379,15 @@ final class FocusModeController {
         var screenGroups: [[ManagedWindow]] = Array(repeating: [], count: max(screens.count, 1))
         for window in ordered {
             var currentFrame = window.frame
-            if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title),
-               let realFrame = AccessibilityHelper.getFrame(of: axWindow) {
-                currentFrame = realFrame
-            }
-            
-            // 画面外（-4000など）に退避されている場合、退避前の元の座標を優先してスクリーン判定を行う
-            if currentFrame.origin.x < -1000, let beforeStaging = window.frameBeforeStaging {
-                currentFrame = beforeStaging
+            if window.state != .staged {
+                if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title),
+                   let realFrame = AccessibilityHelper.getFrame(of: axWindow) {
+                    currentFrame = realFrame
+                }
+            } else {
+                if let beforeStaging = window.frameBeforeStaging {
+                    currentFrame = beforeStaging
+                }
             }
             
             let idx = screenIndex(for: currentFrame, in: screens)

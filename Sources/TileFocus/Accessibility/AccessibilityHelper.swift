@@ -400,4 +400,36 @@ enum AccessibilityHelper {
         }
         return ids
     }
+
+    /// 指定座標（AX座標系）にある最前面のウィンドウを取得する
+    static func getWindow(at point: CGPoint) -> AXUIElement? {
+        let systemWide = AXUIElementCreateSystemWide()
+        var elementRef: AXUIElement?
+        let result = AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &elementRef)
+        guard result == .success, let element = elementRef else {
+            return nil
+        }
+        
+        // 取得した要素がウィンドウでなければ、ウィンドウになるまで親要素を辿る
+        var current: AXUIElement = element
+        while true {
+            var roleRef: CFTypeRef?
+            let roleResult = AXUIElementCopyAttributeValue(current, kAXRoleAttribute as CFString, &roleRef)
+            if roleResult == .success, let role = roleRef as? String {
+                if role == kAXWindowRole as String {
+                    return current
+                }
+            }
+            
+            // 親を辿る
+            var parentRef: CFTypeRef?
+            let parentResult = AXUIElementCopyAttributeValue(current, kAXParentAttribute as CFString, &parentRef)
+            if parentResult == .success, let parent = parentRef {
+                current = (parent as! AXUIElement)
+            } else {
+                break
+            }
+        }
+        return nil
+    }
 }

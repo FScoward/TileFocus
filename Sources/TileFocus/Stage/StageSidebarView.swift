@@ -595,33 +595,21 @@ struct StageTopBarView: View {
         // ウィンドウの物理的な画面位置を判定
         let positionLabel: String = {
             if isStaged { return "格納" }
-            if isMaster { return "メイン" }
-            let screenFrame = screen.frame
-            let winFrame = window.frameBeforeStaging ?? window.frame
-            let winMidX = winFrame.midX
-            let screenMidX = screenFrame.midX
-            if winMidX < screenMidX - 50 {
-                return "左"
-            } else if winMidX > screenMidX + 50 {
-                return "右"
-            } else {
-                return "メイン"
+            switch col {
+            case 0: return "左"
+            case 1: return "メイン"
+            case 2: return "右"
+            default: return "格納"
             }
         }()
         
         let positionColor: Color = {
             if isStaged { return Color.secondary }
-            if isMaster { return Color.orange }
-            let screenFrame = screen.frame
-            let winFrame = window.frameBeforeStaging ?? window.frame
-            let winMidX = winFrame.midX
-            let screenMidX = screenFrame.midX
-            if winMidX < screenMidX - 50 {
-                return Color.blue
-            } else if winMidX > screenMidX + 50 {
-                return Color.purple
-            } else {
-                return Color.orange
+            switch col {
+            case 0: return Color.blue
+            case 1: return Color.orange
+            case 2: return Color.purple
+            default: return Color.secondary
             }
         }()
 
@@ -1031,7 +1019,7 @@ func getWindowsForScreen(screen: NSScreen, windowManager: WindowManager) -> (act
         !windowManager.stagedWindows.contains(where: { $0.id == window.id })
     }
     
-    // 表示中のウィンドウを、現在の Focus Style に基づいて論理的な物理配置順（左から右）にソート
+    // 表示中のウィンドウを、[マスター] + customWindowOrder順の残りのウィンドウ に並び替え
     let sortedActive: [ManagedWindow]
     if let master = activeWins.first(where: { $0.id == windowManager.masterWindow?.id }) {
         var others = activeWins.filter { $0.id != master.id }
@@ -1044,39 +1032,14 @@ func getWindowsForScreen(screen: NSScreen, windowManager: WindowManager) -> (act
             case (.some(let i1), .some(let i2)): return i1 < i2
             case (.some, .none): return true
             case (.none, .some): return false
-            case (.none, .none): return w1.appName < w2.appName
-            }
-        }
-        
-        let focusStyle = windowManager.focusStyle(for: screen)
-        switch focusStyle {
-        case .centered, .splitCentered:
-            var leftOthers: [ManagedWindow] = []
-            var rightOthers: [ManagedWindow] = []
-            for (idx, win) in others.enumerated() {
-                if idx % 2 == 0 {
-                    leftOthers.append(win) // 奇数番目（0-basedで偶数インデックス）は左側
-                } else {
-                    rightOthers.append(win) // 偶数番目（0-basedで奇数インデックス）は右側
+            case (.none, .none):
+                if w1.appName != w2.appName {
+                    return w1.appName < w2.appName
                 }
-            }
-            sortedActive = leftOthers + [master] + rightOthers
-            
-        case .leftMain, .absoluteSplit2:
-            sortedActive = [master] + others
-            
-        case .rightMain:
-            sortedActive = others + [master]
-            
-        case .absoluteSplit3:
-            if others.count >= 2 {
-                sortedActive = [others[0]] + [master] + [others[1]] + others.dropFirst(2)
-            } else if others.count == 1 {
-                sortedActive = [others[0]] + [master]
-            } else {
-                sortedActive = [master]
+                return w1.title < w2.title
             }
         }
+        sortedActive = [master] + others
     } else {
         // マスターがない場合は customWindowOrder の順で並べる
         sortedActive = activeWins.sorted { w1, w2 in
@@ -1086,7 +1049,11 @@ func getWindowsForScreen(screen: NSScreen, windowManager: WindowManager) -> (act
             case (.some(let i1), .some(let i2)): return i1 < i2
             case (.some, .none): return true
             case (.none, .some): return false
-            case (.none, .none): return w1.appName < w2.appName
+            case (.none, .none):
+                if w1.appName != w2.appName {
+                    return w1.appName < w2.appName
+                }
+                return w1.title < w2.title
             }
         }
     }
