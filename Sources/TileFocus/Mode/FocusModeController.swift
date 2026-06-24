@@ -416,8 +416,10 @@ final class FocusModeController {
             AccessibilityHelper.setFrame(targetFrame, to: axWindow)
             windowManager.setTilingInProgress(false)
             
-            // アクティブにする
-            AccessibilityHelper.focus(window: axWindow)
+            // アクティブにする（フォーカスされているのがマスターの場合のみ）
+            if focusedWindowID == masterID {
+                AccessibilityHelper.focus(window: axWindow)
+            }
         }
     }
 
