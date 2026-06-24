@@ -319,8 +319,19 @@ final class FocusModeController {
         windowManager?.updateFocusedWindowID(id)
         if let id {
             updateFocusHistory(with: id)
-            if let windowManager, windowManager.currentMode == .focus, masterWindowID == nil {
-                setMasterWindowID(id)
+            guard let windowManager, windowManager.currentMode != .tiling else { return }
+            
+            let trigger = AppSettings.shared.crownSwapTrigger
+            if trigger == .clickOnly {
+                if masterWindowID != id {
+                    Log.info(Self.tag, "[setFocusedWindowID] clickOnly設定によりマスターを自動変更: \(id)")
+                    setMasterWindowID(id)
+                    applyLayout()
+                }
+            } else {
+                if windowManager.currentMode == .focus && masterWindowID == nil {
+                    setMasterWindowID(id)
+                }
             }
         }
     }
