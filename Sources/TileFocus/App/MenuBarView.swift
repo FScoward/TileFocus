@@ -11,11 +11,17 @@ struct MenuBarView: View {
 
             Divider()
 
+            // 権限警告
+            if !PermissionChecker.isAccessibilityEnabled {
+                permissionWarningSection
+                Divider()
+            }
+
             // モード切り替え
             modeSection
 
             Divider()
-
+            
             // レイアウト選択（Tiling Mode 時のみ）
             if windowManager.currentMode == .tiling {
                 layoutSection
@@ -59,6 +65,37 @@ struct MenuBarView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
+    }
+
+    private var permissionWarningSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text("アクセシビリティ権限がありません")
+                    .font(.footnote)
+                    .fontWeight(.bold)
+            }
+            Text("ウィンドウ配置機能を利用するには、システム設定での許可が必要です。")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            
+            Button {
+                PermissionChecker.openAccessibilitySettings()
+            } label: {
+                Text("システム設定を開く")
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.accentColor)
+                    .cornerRadius(4)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color.orange.opacity(0.08))
     }
 
     // MARK: - Mode Section

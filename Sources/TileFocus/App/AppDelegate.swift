@@ -12,13 +12,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkAccessibilityPermission() {
-        guard PermissionChecker.isAccessibilityEnabled else {
+        if PermissionChecker.isAccessibilityEnabled {
+            // 権限あり → ウィンドウ監視を開始
+            WindowManager.shared.startObserving()
+        } else {
+            // 権限なし → アラート表示してシステム設定を促す
             showPermissionAlert()
-            NSApp.terminate(nil) // 権限が不足している場合はアプリを閉じる
-            return
+            
+            // アプリを終了させず、権限が許可されるのを繰り返しチェック（3分間）
+            PermissionChecker.waitForPermission(interval: 1.0, maxRetries: 180) {
+                print("[AppDelegate] アクセシビリティ権限が付与されました。ウィンドウ監視を開始します。")
+                WindowManager.shared.startObserving()
+            }
         }
-        // 権限あり → ウィンドウ監視を開始
-        WindowManager.shared.startObserving()
     }
 
     private func showPermissionAlert() {
