@@ -523,6 +523,12 @@ final class WindowManager: ObservableObject {
             }
         }
         
+        // Float Mode では、保存されたマスターが無い場合は nil にし、自動的なマスター割り当て（フォーカスウィンドウのマスター化）は行わない
+        if currentMode == .float {
+            masterWindowID = nil
+            return
+        }
+        
         // 保存されたマスターが存在しない、または無効な場合は、現在フォーカスされているウィンドウ、または先頭のウィンドウをマスター候補とする
         let remaining = managedWindows.filter { $0.state != .staged }
         if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
