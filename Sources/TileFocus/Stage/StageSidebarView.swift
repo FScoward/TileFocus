@@ -697,12 +697,25 @@ struct StageTopBarView: View {
                     .font(.system(size: 8))
                     .foregroundStyle(crownFg)
                     .contentShape(Rectangle())
-                    .onTapGesture {
-                        if isStaged {
-                            windowManager.unstageWindow(window)
-                        }
-                        windowManager.setMasterWindow(to: window.id)
-                    }
+                    .simultaneousGesture(
+                        TapGesture()
+                            .onEnded {
+                                if isStaged {
+                                    windowManager.unstageWindow(window)
+                                }
+                                windowManager.setMasterWindow(to: window.id)
+                            }
+                    )
+                    .simultaneousGesture(
+                        TapGesture()
+                            .modifiers([.control, .shift])
+                            .onEnded {
+                                if isStaged {
+                                    windowManager.unstageWindow(window)
+                                }
+                                windowManager.setMasterWindow(to: window.id)
+                            }
+                    )
             }
             .padding(.horizontal, 5)
             .padding(.vertical, 4)
@@ -739,24 +752,33 @@ struct StageTopBarView: View {
             .scaleEffect(isHovered ? 1.02 : 1.0)
             .animation(.spring(response: 0.22, dampingFraction: 0.65, blendDuration: 0), value: isHovered)
             .contentShape(Rectangle())
-            .onTapGesture {
-                if isStaged {
-                    windowManager.unstageWindow(window)
-                }
-                
-                let trigger = AppSettings.shared.crownSwapTrigger
-                if trigger == .clickOnly {
-                    windowManager.setMasterWindow(to: window.id)
-                } else {
-                    let modifiers = NSEvent.modifierFlags
-                    let isCtrlShiftPressed = modifiers.contains(.control) && modifiers.contains(.shift)
-                    if isCtrlShiftPressed {
+            // 1. Control + Shift + クリックのジェスチャ
+            .simultaneousGesture(
+                TapGesture()
+                    .modifiers([.control, .shift])
+                    .onEnded {
+                        if isStaged {
+                            windowManager.unstageWindow(window)
+                        }
                         windowManager.setMasterWindow(to: window.id)
-                    } else {
-                        windowManager.activateWindowWithoutChangingMaster(to: window.id)
                     }
-                }
-            }
+            )
+            // 2. 通常クリック（修飾キーなし）のジェスチャ
+            .simultaneousGesture(
+                TapGesture()
+                    .onEnded {
+                        if isStaged {
+                            windowManager.unstageWindow(window)
+                        }
+                        
+                        let trigger = AppSettings.shared.crownSwapTrigger
+                        if trigger == .clickOnly {
+                            windowManager.setMasterWindow(to: window.id)
+                        } else {
+                            windowManager.activateWindowWithoutChangingMaster(to: window.id)
+                        }
+                    }
+            )
             .onHover { hovering in
                 hoveredWindowID = hovering ? window.id : nil
             }
