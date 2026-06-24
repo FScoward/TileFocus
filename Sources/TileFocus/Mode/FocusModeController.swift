@@ -69,14 +69,16 @@ final class FocusModeController {
         // マウスクリック監視を追加（Control + Shift + ウィンドウクリックで王冠設定）
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
             guard let self else { return }
+            let mouseLocation = NSEvent.mouseLocation
             Task { @MainActor in
-                self.handleMouseClick(event: event)
+                self.handleMouseClick(event: event, at: mouseLocation)
             }
         }
         localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
             guard let self else { return event }
+            let mouseLocation = NSEvent.mouseLocation
             Task { @MainActor in
-                self.handleMouseClick(event: event)
+                self.handleMouseClick(event: event, at: mouseLocation)
             }
             return event
         }
@@ -269,12 +271,11 @@ final class FocusModeController {
     }
 
     @MainActor
-    private func handleMouseClick(event: NSEvent) {
+    func handleMouseClick(event: NSEvent, at mouseLocation: NSPoint) {
         let flags = event.modifierFlags
         let isCtrlShiftPressed = flags.contains(.control) && flags.contains(.shift)
         guard isCtrlShiftPressed else { return }
 
-        let mouseLocation = NSEvent.mouseLocation
         let axPoint = screenManager.appKitToAX(mouseLocation)
         
         Log.info(Self.tag, "handleMouseClick: Control+Shiftクリック検知 mouseLocation=\(mouseLocation), axPoint=\(axPoint)")
@@ -289,8 +290,10 @@ final class FocusModeController {
             return
         }
         
-        var pid: pid_t = 0
-        AXUIElementGetPid(axWindow, &pid)
+        guard let pid = AccessibilityHelper.getPid(of: axWindow) else {
+            Log.debug(Self.tag, "  取得したウィンドウ要素の PID を取得できません")
+            return
+        }
         
         guard let windowManager else { return }
         

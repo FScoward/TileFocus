@@ -16,6 +16,13 @@ func CGSCopyManagedDisplaySpaces(_ connection: Int32) -> CFArray?
 /// ウィンドウの位置・サイズ取得/設定、タイトル取得、ウィンドウ列挙などを提供
 enum AccessibilityHelper {
 
+    #if DEBUG
+    static var mockWindowAtPoint: AXUIElement? = nil
+    static var mockWindowID: CGWindowID? = nil
+    static var mockWindowTitle: String? = nil
+    static var mockWindowPid: pid_t? = nil
+    #endif
+
     private static let tag = "AccessibilityHelper"
 
     // MARK: - Window Enumeration
@@ -233,8 +240,25 @@ enum AccessibilityHelper {
 
     // MARK: - Title
 
+    /// AXUIElement から PID を取得
+    static func getPid(of window: AXUIElement) -> pid_t? {
+        #if DEBUG
+        if let mock = mockWindowPid {
+            return mock
+        }
+        #endif
+        var pid: pid_t = 0
+        let result = AXUIElementGetPid(window, &pid)
+        return result == .success ? pid : nil
+    }
+
     /// ウィンドウのタイトルを取得
     static func getTitle(of window: AXUIElement) -> String? {
+        #if DEBUG
+        if let mock = mockWindowTitle {
+            return mock
+        }
+        #endif
         var value: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(
             window, kAXTitleAttribute as CFString, &value
@@ -247,6 +271,11 @@ enum AccessibilityHelper {
 
     /// AXUIElement から CGWindowID を取得
     static func getWindowID(of window: AXUIElement) -> CGWindowID? {
+        #if DEBUG
+        if let mock = mockWindowID {
+            return mock
+        }
+        #endif
         var windowID: CGWindowID = 0
         let result = _AXUIElementGetWindow(window, &windowID)
         if result != .success {
@@ -403,6 +432,11 @@ enum AccessibilityHelper {
 
     /// 指定座標（AX座標系）にある最前面のウィンドウを取得する
     static func getWindow(at point: CGPoint) -> AXUIElement? {
+        #if DEBUG
+        if let mock = mockWindowAtPoint {
+            return mock
+        }
+        #endif
         let systemWide = AXUIElementCreateSystemWide()
         var elementRef: AXUIElement?
         let result = AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &elementRef)

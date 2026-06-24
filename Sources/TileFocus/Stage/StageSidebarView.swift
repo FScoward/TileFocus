@@ -673,9 +673,7 @@ struct StageTopBarView: View {
                 if trigger == .clickOnly {
                     windowManager.setMasterWindow(to: window.id)
                 } else {
-                    let modifiers = NSEvent.modifierFlags
-                    let isCtrlShiftPressed = modifiers.contains(.control) && modifiers.contains(.shift)
-                    if isCtrlShiftPressed {
+                    if windowManager.isControlShiftPressed() {
                         windowManager.setMasterWindow(to: window.id)
                     } else {
                         windowManager.activateWindowWithoutChangingMaster(to: window.id)

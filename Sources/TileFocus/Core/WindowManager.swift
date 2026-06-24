@@ -124,10 +124,17 @@ final class WindowManager: ObservableObject {
     private var workspaceObservers: [NSObjectProtocol] = []
     /// 仮想スペースUUID（またはモニターID）ごとのマスターウィンドウIDの記憶
     private var masterWindowIDsBySpace: [String: String] = [:]
+    #if DEBUG
+    var isTestingMode: Bool = false
+    #endif
 
     // MARK: - Init
 
+    #if DEBUG
+    init() {}
+    #else
     private init() {}
+    #endif
 
     // MARK: - Lifecycle
 
@@ -379,6 +386,12 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    /// 物理キーボードで Control + Shift が押されているかを確実に判定する
+    func isControlShiftPressed() -> Bool {
+        let flags = CGEventSource.flagsState(.combinedSessionState)
+        return flags.contains(.maskControl) && flags.contains(.maskShift)
+    }
+
     // MARK: - Stage Control
 
     /// フォーカス中のウィンドウを格納
@@ -415,6 +428,9 @@ final class WindowManager: ObservableObject {
     ///
     /// 順序: フロントアプリのメインウィンドウ → その他のアプリのウィンドウ
     func refreshWindowList() {
+        #if DEBUG
+        if isTestingMode { return }
+        #endif
         let activeSpaceIDs = AccessibilityHelper.getActiveSpaceWindowIDs()
         let selfPid = ProcessInfo.processInfo.processIdentifier
         let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
@@ -645,6 +661,13 @@ final class WindowManager: ObservableObject {
         updateFrames(updatedFrames)
         Log.debug("WindowManager", "syncActualFrames: 実際のフレームで同期完了 (\(updatedFrames.count)件)")
     }
+
+    #if DEBUG
+    /// テスト用に FocusModeController を直接設定する
+    func setFocusControllerForTesting(_ controller: FocusModeController) {
+        self.focusController = controller
+    }
+    #endif
 
     // MARK: - Helpers
 
