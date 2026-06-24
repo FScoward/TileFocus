@@ -57,9 +57,9 @@ final class FocusModeController {
             guard let app = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
             Log.info(Self.tag, "didActivateApplication: \(app.localizedName ?? "?")")
             Task { @MainActor in
-                // applyLayout() 実行中は通知による上書きを抑制
-                guard !self.isApplyingLayout else {
-                    Log.debug(Self.tag, "didActivateApplication: applyLayout 中のため スキップ")
+                // applyLayout() 実行中またはスペース切り替え中は通知による上書きを抑制
+                guard !self.isApplyingLayout, let windowManager = self.windowManager, !windowManager.isSpaceSwitching else {
+                    Log.debug(Self.tag, "didActivateApplication: スキップ (applyLayout中、またはスペース切り替え中)")
                     return
                 }
                 self.updateFocusedWindow(runningApp: app)
@@ -231,12 +231,11 @@ final class FocusModeController {
 
     /// WindowObserver からフォーカス変更の通知を受け取る（同じアプリ内のウィンドウ切り替え等に対応）
     func handleFocusChanged(pid: pid_t, title: String) {
-        guard !isApplyingLayout else {
-            Log.debug(Self.tag, "handleFocusChanged: applyLayout 中のためスキップ")
+        guard !isApplyingLayout, let windowManager, !windowManager.isSpaceSwitching else {
+            Log.debug(Self.tag, "handleFocusChanged: applyLayout中またはスペース切り替え中のためスキップ")
             return
         }
 
-        guard let windowManager else { return }
         let managed = windowManager.managedWindows
 
         if let match = managed.first(where: {

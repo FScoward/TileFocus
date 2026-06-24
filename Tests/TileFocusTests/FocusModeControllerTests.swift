@@ -164,4 +164,49 @@ final class FocusModeControllerTests: XCTestCase {
         // Control+Shift+クリックなので、マスターも WindowB に切り替わるはず
         XCTAssertEqual(windowManager.masterWindowID, windowB.id, "ctrlShiftClick設定時でも、Control+Shift+クリックを行った場合はマスター（王冠）が切り替わるべきです")
     }
+    
+    /// 仮想スペース切り替え中にフォーカス変更イベントを検出しても、マスターが勝手に切り替わらないことをテスト
+    func testSpaceSwitchingPreventsMasterOverride() async throws {
+        // 新しい孤立した WindowManager インスタンスを作成
+        let windowManager = WindowManager()
+        windowManager.isTestingMode = true
+        
+        // 設定を clickOnly にする（通常ならフォーカス変更でマスターが変わる設定）
+        AppSettings.shared.crownSwapTrigger = .clickOnly
+        
+        // テスト用 FocusModeController を生成してインジェクト
+        let controller = FocusModeController(windowManager: windowManager)
+        windowManager.setFocusControllerForTesting(controller)
+        
+        windowManager.switchMode(to: .focus)
+        
+        // テスト用のダミーウィンドウを登録
+        let windowA = ManagedWindow(pid: 1001, windowID: 1, title: "AppA", appName: "AppA", bundleIdentifier: "com.AppA", frame: .zero)
+        let windowB = ManagedWindow(pid: 1002, windowID: 2, title: "AppB", appName: "AppB", bundleIdentifier: "com.AppB", frame: .zero)
+        
+        windowManager.updateManagedWindows([windowA, windowB])
+        
+        // 初期状態として WindowA をマスター & フォーカスに設定
+        windowManager.setMasterWindow(to: windowA.id)
+        
+        try await Task.sleep(nanoseconds: 400_000_000) // 0.4秒待機
+        
+        XCTAssertEqual(windowManager.masterWindowID, windowA.id)
+        XCTAssertEqual(windowManager.focusedWindowID, windowA.id)
+        
+        // スペース切り替え中フラグを立てる
+        windowManager.isSpaceSwitching = true
+        
+        // WindowB にフォーカスが切り替わったイベントを流す（スペース遷移時のOSによるフォーカス移動を想定）
+        windowManager.windowObserver(WindowObserver(), didDetectFocusChanged: windowB.pid, title: windowB.title)
+        
+        try await Task.sleep(nanoseconds: 400_000_000) // 0.4秒待機
+        
+        // clickOnly 設定だが、isSpaceSwitching = true なのでフォーカス変更イベントは無視され、
+        // マスターは WindowA のまま維持されているはず
+        XCTAssertEqual(windowManager.masterWindowID, windowA.id, "スペース切り替え中はフォーカス変更によるマスター上書きが無視されるべきです")
+        
+        // スペース切り替え完了
+        windowManager.isSpaceSwitching = false
+    }
 }

@@ -124,6 +124,7 @@ final class WindowManager: ObservableObject {
     private var workspaceObservers: [NSObjectProtocol] = []
     /// 仮想スペースUUID（またはモニターID）ごとのマスターウィンドウIDの記憶
     private var masterWindowIDsBySpace: [String: String] = [:]
+    var isSpaceSwitching: Bool = false
     #if DEBUG
     var isTestingMode: Bool = false
     #endif
@@ -176,13 +177,13 @@ final class WindowManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            // 仮想スペース切り替え直後はOS側の状態が不安定なため、0.2 秒のディレイを設ける
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                Task { @MainActor in
-                    Log.info("WindowManager", "仮想デスクトップの切り替えを検知しました。ウィンドウリストを再構成します。")
-                    self.refreshWindowList()
-                    self.triggerLayoutUpdate()
-                }
+            Task { @MainActor in
+                self.isSpaceSwitching = true
+                // 仮想スペース切り替え直後はOS側の状態が不安定なため、0.2 秒のディレイを設ける
+                try? await Task.sleep(nanoseconds: 200_000_000) // 0.2秒待機
+                Log.info("WindowManager", "仮想デスクトップの切り替えを検知しました。ウィンドウリストを再構成します。")
+                self.refreshWindowList()
+                self.triggerLayoutUpdate()
             }
         }
         self.workspaceObservers = [spaceToken]
@@ -501,6 +502,7 @@ final class WindowManager: ObservableObject {
         
         // 仮想スペース切り替え時やウィンドウリスト更新時に、現在のスペース用のマスターウィンドウIDを復帰させる
         restoreMasterWindowIDForActiveSpace()
+        isSpaceSwitching = false
 
         print("[WindowManager] ウィンドウリスト更新: \(windows.count) 件 (front=\(frontPid.map(String.init) ?? "none"))")
         for (i, w) in windows.enumerated() {
