@@ -47,7 +47,8 @@ final class AppSettings: ObservableObject {
         static let mainWidthRatio = "mainWidthRatio"
         static let focusStylesByMonitor = "focusStylesByMonitor"
         static let crownSwapTrigger = "crownSwapTrigger"
-        static let floatModeRatio = "floatModeRatio"
+        static let floatModeWidthRatio = "floatModeWidthRatio"
+        static let floatModeHeightRatio = "floatModeHeightRatio"
     }
 
     // MARK: - Settings
@@ -62,9 +63,14 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(mainWidthRatio, forKey: Keys.mainWidthRatio) }
     }
 
-    /// Float Modeでの中央ウィンドウの表示比率
-    @Published var floatModeRatio: Double {
-        didSet { defaults.set(floatModeRatio, forKey: Keys.floatModeRatio) }
+    /// Float Modeでの中央ウィンドウの横比率
+    @Published var floatModeWidthRatio: Double {
+        didSet { defaults.set(floatModeWidthRatio, forKey: Keys.floatModeWidthRatio) }
+    }
+
+    /// Float Modeでの中央ウィンドウの縦比率
+    @Published var floatModeHeightRatio: Double {
+        didSet { defaults.set(floatModeHeightRatio, forKey: Keys.floatModeHeightRatio) }
     }
 
     /// モニターごとの Focus Style 設定
@@ -103,8 +109,11 @@ final class AppSettings: ObservableObject {
         let savedRatio = defaults.double(forKey: Keys.mainWidthRatio)
         mainWidthRatio = savedRatio == 0 ? 0.55 : savedRatio
 
-        let savedFloatRatio = defaults.double(forKey: Keys.floatModeRatio)
-        floatModeRatio = savedFloatRatio == 0 ? 0.55 : savedFloatRatio
+        let savedFloatWidthRatio = defaults.double(forKey: Keys.floatModeWidthRatio)
+        floatModeWidthRatio = savedFloatWidthRatio == 0 ? 0.55 : savedFloatWidthRatio
+
+        let savedFloatHeightRatio = defaults.double(forKey: Keys.floatModeHeightRatio)
+        floatModeHeightRatio = savedFloatHeightRatio == 0 ? 0.55 : savedFloatHeightRatio
 
         focusStylesByMonitor = defaults.dictionary(forKey: Keys.focusStylesByMonitor) as? [String: String] ?? [:]
 

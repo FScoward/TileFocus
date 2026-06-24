@@ -390,10 +390,11 @@ final class FocusModeController {
             let screen = screenManager.screen(containingAXFrame: currentFrame)
             let visibleFrame = screenManager.visibleFrameInAX(for: screen)
             
-            // 特定% (幅・高さともに ratio 割合にする)
-            let ratio = AppSettings.shared.floatModeRatio
-            let targetWidth = visibleFrame.width * ratio
-            let targetHeight = visibleFrame.height * ratio
+            // 特定% (幅・高さそれぞれ個別の比率にする)
+            let widthRatio = AppSettings.shared.floatModeWidthRatio
+            let heightRatio = AppSettings.shared.floatModeHeightRatio
+            let targetWidth = visibleFrame.width * widthRatio
+            let targetHeight = visibleFrame.height * heightRatio
             let targetX = visibleFrame.minX + (visibleFrame.width - targetWidth) / 2
             let targetY = visibleFrame.minY + (visibleFrame.height - targetHeight) / 2
             
