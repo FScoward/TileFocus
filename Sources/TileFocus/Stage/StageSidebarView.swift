@@ -331,7 +331,7 @@ struct StageTopBarView: View {
                             HStack(alignment: .top, spacing: 12) {
                                 // 左サイドバー列
                                 VStack(spacing: 6) {
-                                    Text("左サブ")
+                                    Text(windowManager.currentMode == .float ? "自由配置" : "左サブ")
                                         .font(.system(size: 8, weight: .bold))
                                         .foregroundStyle(.secondary)
                                     ForEach(split.left, id: \.id) { window in
@@ -347,7 +347,7 @@ struct StageTopBarView: View {
                                 
                                 // メイン列
                                 VStack(spacing: 6) {
-                                    Text("メイン")
+                                    Text(windowManager.currentMode == .float ? "中央配置" : "メイン")
                                         .font(.system(size: 8, weight: .bold))
                                         .foregroundStyle(.secondary)
                                     ForEach(split.main, id: \.id) { window in
@@ -363,7 +363,7 @@ struct StageTopBarView: View {
                                 
                                 // 右サイドバー列
                                 VStack(spacing: 6) {
-                                    Text("右サブ")
+                                    Text(windowManager.currentMode == .float ? "自由配置" : "右サブ")
                                         .font(.system(size: 8, weight: .bold))
                                         .foregroundStyle(.secondary)
                                     ForEach(split.right, id: \.id) { window in
@@ -692,10 +692,17 @@ struct StageTopBarView: View {
                 
                 Spacer(minLength: 0)
                 
-                // 状態を示す王冠アイコン
+                // 状態を示す王冠アイコン（直接タップで常に王冠を切り替える）
                 Image(systemName: isMaster ? "crown.fill" : "crown")
                     .font(.system(size: 8))
                     .foregroundStyle(crownFg)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if isStaged {
+                            windowManager.unstageWindow(window)
+                        }
+                        windowManager.setMasterWindow(to: window.id)
+                    }
             }
             .padding(.horizontal, 5)
             .padding(.vertical, 4)
