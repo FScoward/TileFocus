@@ -319,7 +319,7 @@ final class FocusModeController {
         windowManager?.updateFocusedWindowID(id)
         if let id {
             updateFocusHistory(with: id)
-            if masterWindowID == nil {
+            if let windowManager, windowManager.currentMode == .focus, masterWindowID == nil {
                 setMasterWindowID(id)
             }
         }
