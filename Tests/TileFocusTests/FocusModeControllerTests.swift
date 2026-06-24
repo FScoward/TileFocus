@@ -209,4 +209,61 @@ final class FocusModeControllerTests: XCTestCase {
         // スペース切り替え完了
         windowManager.isSpaceSwitching = false
     }
+    
+    /// ctrlShiftClick設定のとき、マスターが未設定(nil)の状態でレイアウトが走っても、自動的にマスターが設定されないことをテスト
+    func testCtrlShiftClickDoesNotAssignMasterAutomaticallyIfNil() async throws {
+        let windowManager = WindowManager()
+        windowManager.isTestingMode = true
+        
+        AppSettings.shared.crownSwapTrigger = .ctrlShiftClick
+        
+        let controller = FocusModeController(windowManager: windowManager)
+        windowManager.setFocusControllerForTesting(controller)
+        
+        windowManager.switchMode(to: .focus)
+        
+        let windowA = ManagedWindow(pid: 1001, windowID: 1, title: "AppA", appName: "AppA", bundleIdentifier: "com.AppA", frame: .zero)
+        let windowB = ManagedWindow(pid: 1002, windowID: 2, title: "AppB", appName: "AppB", bundleIdentifier: "com.AppB", frame: .zero)
+        windowManager.updateManagedWindows([windowA, windowB])
+        
+        // applyLayout() を直接呼び出すことでレイアウト計算を実行
+        controller.applyLayout()
+        
+        try await Task.sleep(nanoseconds: 400_000_000)
+        
+        // ctrlShiftClick なので、applyLayout しても masterWindowID は nil のままであるべき
+        XCTAssertNil(windowManager.masterWindowID, "ctrlShiftClick設定時はマスターがnilの場合に自動設定されるべきではありません")
+    }
+    
+    /// ctrlShiftClick設定のとき、マスターウィンドウが消失（クローズ）した際、自動的に他のウィンドウにマスターが移譲されず nil になることをテスト
+    func testCtrlShiftClickClearsMasterIfMasterWindowDisappears() async throws {
+        let windowManager = WindowManager()
+        windowManager.isTestingMode = true
+        
+        AppSettings.shared.crownSwapTrigger = .ctrlShiftClick
+        
+        let controller = FocusModeController(windowManager: windowManager)
+        windowManager.setFocusControllerForTesting(controller)
+        
+        windowManager.switchMode(to: .focus)
+        
+        let windowA = ManagedWindow(pid: 1001, windowID: 1, title: "AppA", appName: "AppA", bundleIdentifier: "com.AppA", frame: .zero)
+        let windowB = ManagedWindow(pid: 1002, windowID: 2, title: "AppB", appName: "AppB", bundleIdentifier: "com.AppB", frame: .zero)
+        windowManager.updateManagedWindows([windowA, windowB])
+        
+        // 初期状態として WindowA をマスターに設定
+        windowManager.setMasterWindow(to: windowA.id)
+        try await Task.sleep(nanoseconds: 400_000_000)
+        
+        XCTAssertEqual(windowManager.masterWindowID, windowA.id)
+        
+        // WindowA が閉じられた（リストから削除してクローズイベント発火）
+        windowManager.updateManagedWindows([windowB])
+        controller.handleWindowClosed(id: windowA.id)
+        
+        try await Task.sleep(nanoseconds: 400_000_000)
+        
+        // ctrlShiftClick なので、マスターウィンドウが閉じられた場合、自動移譲されず nil になるべき
+        XCTAssertNil(windowManager.masterWindowID, "ctrlShiftClick設定時はマスターが閉じられた際に自動移譲されるべきではありません")
+    }
 }

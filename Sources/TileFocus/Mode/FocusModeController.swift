@@ -254,14 +254,20 @@ final class FocusModeController {
         Log.info(Self.tag, "handleWindowClosed() windowID=\(id)")
         focusHistory.removeAll { $0 == id }
         if masterWindowID == id {
-            if let windowManager {
-                let remaining = windowManager.managedWindows.filter { $0.id != id && $0.state != .staged }
-                if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
-                    setMasterWindowID(nextMaster.id)
+            let trigger = AppSettings.shared.crownSwapTrigger
+            if trigger == .clickOnly {
+                if let windowManager {
+                    let remaining = windowManager.managedWindows.filter { $0.id != id && $0.state != .staged }
+                    if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
+                        setMasterWindowID(nextMaster.id)
+                    } else {
+                        setMasterWindowID(nil)
+                    }
                 } else {
                     setMasterWindowID(nil)
                 }
             } else {
+                Log.info(Self.tag, "  マスターウィンドウが閉じられたため、マスターを解除 (ctrlShiftClick設定)")
                 setMasterWindowID(nil)
             }
             Log.info(Self.tag, "  マスターウィンドウが閉じられたため、新しいマスターに設定: \(masterWindowID ?? "nil")")
@@ -439,23 +445,31 @@ final class FocusModeController {
         let allWindows = windowManager.managedWindows + windowManager.stagedWindows
 
         // マスターウィンドウが格納されている、消失している、あるいは未設定の場合の自動補正
+        let trigger = AppSettings.shared.crownSwapTrigger
         if let currentMasterID = masterWindowID {
             let isStaged = windowManager.stagedWindows.contains(where: { $0.id == currentMasterID })
             let exists = allWindows.contains(where: { $0.id == currentMasterID })
             if isStaged || !exists {
-                let remaining = windowManager.managedWindows.filter { $0.state != .staged }
-                if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
-                    Log.info(Self.tag, "マスターウィンドウが格納または消失したため、新マスターに自動移譲: \(nextMaster.appName) (id=\(nextMaster.id))")
-                    setMasterWindowID(nextMaster.id)
+                if trigger == .clickOnly {
+                    let remaining = windowManager.managedWindows.filter { $0.state != .staged }
+                    if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
+                        Log.info(Self.tag, "マスターウィンドウが格納または消失したため、新マスターに自動移譲: \(nextMaster.appName) (id=\(nextMaster.id))")
+                        setMasterWindowID(nextMaster.id)
+                    } else {
+                        setMasterWindowID(nil)
+                    }
                 } else {
+                    Log.info(Self.tag, "マスターウィンドウが格納または消失したため、マスターを解除 (ctrlShiftClick設定)")
                     setMasterWindowID(nil)
                 }
             }
         } else if !allWindows.isEmpty {
-            let remaining = windowManager.managedWindows.filter { $0.state != .staged }
-            if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
-                Log.info(Self.tag, "マスターウィンドウが未設定のため、新マスターに自動設定: \(nextMaster.appName) (id=\(nextMaster.id))")
-                setMasterWindowID(nextMaster.id)
+            if trigger == .clickOnly {
+                let remaining = windowManager.managedWindows.filter { $0.state != .staged }
+                if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
+                    Log.info(Self.tag, "マスターウィンドウが未設定のため、新マスターに自動設定: \(nextMaster.appName) (id=\(nextMaster.id))")
+                    setMasterWindowID(nextMaster.id)
+                }
             }
         }
 

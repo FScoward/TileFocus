@@ -547,11 +547,18 @@ final class WindowManager: ObservableObject {
             return
         }
         
-        // 保存されたマスターが存在しない、または無効な場合は、現在フォーカスされているウィンドウ、または先頭のウィンドウをマスター候補とする
-        let remaining = managedWindows.filter { $0.state != .staged }
-        if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
-            masterWindowID = nextMaster.id
+        // 保存されたマスターが存在しない、または無効な場合：
+        // clickOnly 設定時のみ、自動的に現在フォーカスされているウィンドウ等をマスター候補とする
+        let trigger = AppSettings.shared.crownSwapTrigger
+        if trigger == .clickOnly {
+            let remaining = managedWindows.filter { $0.state != .staged }
+            if let nextMaster = remaining.first(where: { $0.id == focusedWindowID }) ?? remaining.first {
+                masterWindowID = nextMaster.id
+            } else {
+                masterWindowID = nil
+            }
         } else {
+            // ctrlShiftClick の場合は勝手にマスターを設定せず nil とする
             masterWindowID = nil
         }
     }
