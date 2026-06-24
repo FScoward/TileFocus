@@ -821,7 +821,7 @@ struct StageTopBarView: View {
         .offset(offset)
         .zIndex(isDraggingThis ? 100 : (draggingWindowID != nil ? 10 : 1))
         .opacity(isDraggingThis ? 0.6 : (draggingWindowID != nil && draggedWindow?.id == window.id ? 0.35 : 1.0))
-        .gesture(
+        .highPriorityGesture(
             DragGesture(minimumDistance: 5)
                 .onChanged { value in
                     if draggingWindowID == nil {
