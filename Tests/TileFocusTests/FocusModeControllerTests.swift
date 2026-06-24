@@ -266,4 +266,39 @@ final class FocusModeControllerTests: XCTestCase {
         // ctrlShiftClick なので、マスターウィンドウが閉じられた場合、自動移譲されず nil になるべき
         XCTAssertNil(windowManager.masterWindowID, "ctrlShiftClick設定時はマスターが閉じられた際に自動移譲されるべきではありません")
     }
+    
+    /// ctrlShiftClick設定のとき、マスターが未設定(nil)の状態でフォーカスが切り替わっても、自動的にマスターが設定されないことをテスト
+    func testCtrlShiftClickDoesNotAssignMasterOnFocusChangeIfNil() async throws {
+        let windowManager = WindowManager()
+        windowManager.isTestingMode = true
+        
+        AppSettings.shared.crownSwapTrigger = .ctrlShiftClick
+        
+        let controller = FocusModeController(windowManager: windowManager)
+        windowManager.setFocusControllerForTesting(controller)
+        
+        windowManager.switchMode(to: .focus)
+        
+        let windowA = ManagedWindow(pid: 1001, windowID: 1, title: "AppA", appName: "AppA", bundleIdentifier: "com.AppA", frame: .zero)
+        let windowB = ManagedWindow(pid: 1002, windowID: 2, title: "AppB", appName: "AppB", bundleIdentifier: "com.AppB", frame: .zero)
+        windowManager.updateManagedWindows([windowA, windowB])
+        
+        // 最初はマスターが未設定 (nil) とする
+        XCTAssertNil(windowManager.masterWindowID)
+        
+        // WindowA にフォーカスが変更されたイベントをシミュレート
+        windowManager.windowObserver(WindowObserver(), didDetectFocusChanged: windowA.pid, title: windowA.title)
+        
+        try await Task.sleep(nanoseconds: 400_000_000)
+        
+        // ctrlShiftClick なので、フォーカスが切り替わってもマスターは nil のままであるべき
+        XCTAssertNil(windowManager.masterWindowID, "ctrlShiftClick設定時はマスターがnilの状態でフォーカスが変更されても自動的にマスターが設定されるべきではありません")
+        
+        // さらに WindowB にフォーカスが変更されても nil のままであるべき
+        windowManager.windowObserver(WindowObserver(), didDetectFocusChanged: windowB.pid, title: windowB.title)
+        
+        try await Task.sleep(nanoseconds: 400_000_000)
+        
+        XCTAssertNil(windowManager.masterWindowID)
+    }
 }

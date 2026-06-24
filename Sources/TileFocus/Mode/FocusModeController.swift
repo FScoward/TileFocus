@@ -336,10 +336,6 @@ final class FocusModeController {
                     setMasterWindowID(id)
                     applyLayout()
                 }
-            } else {
-                if windowManager.currentMode == .focus && masterWindowID == nil {
-                    setMasterWindowID(id)
-                }
             }
         }
     }
