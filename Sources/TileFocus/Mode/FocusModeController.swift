@@ -389,40 +389,48 @@ final class FocusModeController {
         
         // 2. 現在の王冠ウィンドウ（masterWindowID）を中央に特定%で表示する
         if let masterID = masterWindowID,
-           let masterWindow = allWindows.first(where: { $0.id == masterID }),
-           let axWindow = AccessibilityHelper.findWindow(for: masterWindow.pid, windowID: masterWindow.windowID, title: masterWindow.title) {
+           let masterWindow = allWindows.first(where: { $0.id == masterID }) {
             
-            // 現在の物理的なフレームを取得して、まだ保存されていなければ保存する
-            if floatModeOriginalFrames[masterID] == nil {
-                if let currentFrame = AccessibilityHelper.getFrame(of: axWindow) {
-                    floatModeOriginalFrames[masterID] = currentFrame
-                    Log.info(Self.tag, "[FloatMode] 王冠付与前のフレームを保存: \(masterWindow.appName) -> \(currentFrame)")
-                }
+            // 現在アクティブなスペースに実在するかチェック（別スペースからの引きずり出し防止）
+            let activeSpaceIDs = AccessibilityHelper.getActiveSpaceWindowIDs()
+            guard activeSpaceIDs.contains(masterWindow.windowID) else {
+                Log.warn(Self.tag, "[FloatMode] 王冠ウィンドウが現在のアクティブスペースに存在しないため、配置をスキップします: \(masterWindow.appName)")
+                return
             }
             
-            // 現在アクティブなスクリーンを特定
-            let currentFrame = AccessibilityHelper.getFrame(of: axWindow) ?? masterWindow.frame
-            let screen = screenManager.screen(containingAXFrame: currentFrame)
-            let visibleFrame = screenManager.visibleFrameInAX(for: screen)
-            
-            // 特定% (幅・高さそれぞれ個別の比率にする)
-            let widthRatio = AppSettings.shared.floatModeWidthRatio
-            let heightRatio = AppSettings.shared.floatModeHeightRatio
-            let targetWidth = visibleFrame.width * widthRatio
-            let targetHeight = visibleFrame.height * heightRatio
-            let targetX = visibleFrame.minX + (visibleFrame.width - targetWidth) / 2
-            let targetY = visibleFrame.minY + (visibleFrame.height - targetHeight) / 2
-            
-            let targetFrame = CGRect(x: targetX, y: targetY, width: targetWidth, height: targetHeight)
-            Log.info(Self.tag, "[FloatMode] 王冠ウィンドウを中央に配置: \(masterWindow.appName) -> \(targetFrame)")
-            
-            windowManager.setTilingInProgress(true)
-            AccessibilityHelper.setFrame(targetFrame, to: axWindow)
-            windowManager.setTilingInProgress(false)
-            
-            // アクティブにする（フォーカスされているのがマスターの場合のみ）
-            if focusedWindowID == masterID {
-                AccessibilityHelper.focus(window: axWindow)
+            if let axWindow = AccessibilityHelper.findWindow(for: masterWindow.pid, windowID: masterWindow.windowID, title: masterWindow.title) {
+                // 現在の物理的なフレームを取得して、まだ保存されていなければ保存する
+                if floatModeOriginalFrames[masterID] == nil {
+                    if let currentFrame = AccessibilityHelper.getFrame(of: axWindow) {
+                        floatModeOriginalFrames[masterID] = currentFrame
+                        Log.info(Self.tag, "[FloatMode] 王冠付与前のフレームを保存: \(masterWindow.appName) -> \(currentFrame)")
+                    }
+                }
+                
+                // 現在アクティブなスクリーンを特定
+                let currentFrame = AccessibilityHelper.getFrame(of: axWindow) ?? masterWindow.frame
+                let screen = screenManager.screen(containingAXFrame: currentFrame)
+                let visibleFrame = screenManager.visibleFrameInAX(for: screen)
+                
+                // 特定% (幅・高さそれぞれ個別の比率にする)
+                let widthRatio = AppSettings.shared.floatModeWidthRatio
+                let heightRatio = AppSettings.shared.floatModeHeightRatio
+                let targetWidth = visibleFrame.width * widthRatio
+                let targetHeight = visibleFrame.height * heightRatio
+                let targetX = visibleFrame.minX + (visibleFrame.width - targetWidth) / 2
+                let targetY = visibleFrame.minY + (visibleFrame.height - targetHeight) / 2
+                
+                let targetFrame = CGRect(x: targetX, y: targetY, width: targetWidth, height: targetHeight)
+                Log.info(Self.tag, "[FloatMode] 王冠ウィンドウを中央に配置: \(masterWindow.appName) -> \(targetFrame)")
+                
+                windowManager.setTilingInProgress(true)
+                AccessibilityHelper.setFrame(targetFrame, to: axWindow)
+                windowManager.setTilingInProgress(false)
+                
+                // アクティブにする（フォーカスされているのがマスターの場合のみ）
+                if focusedWindowID == masterID {
+                    AccessibilityHelper.focus(window: axWindow)
+                }
             }
         }
     }
@@ -645,7 +653,16 @@ final class FocusModeController {
             var actualRightX: CGFloat? = nil
             var actualRightW: CGFloat? = nil
 
+            // 現在アクティブなスペースのウィンドウIDを取得
+            let activeSpaceIDs = AccessibilityHelper.getActiveSpaceWindowIDs()
+
             for (i, window) in activeGroup.enumerated() {
+                // 現在アクティブなスペースに実在するかチェック（別スペースからの引きずり出し防止）
+                guard activeSpaceIDs.contains(window.windowID) else {
+                    Log.warn(Self.tag, "    ⚠️ ウィンドウ \"\(window.appName) - \(window.title)\" は現在のアクティブスペースに存在しないため配置をスキップします")
+                    continue
+                }
+                
                 guard let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) else {
                     Log.error(Self.tag, "    ⚠️ AXウィンドウが見つかりません pid=\(window.pid) title=\(window.title)")
                     continue

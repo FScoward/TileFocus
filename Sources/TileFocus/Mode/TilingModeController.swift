@@ -153,8 +153,18 @@ final class TilingModeController {
 
             let frames = layout.calculateFrames(windowCount: sortedWindows.count, screenFrame: screenAXFrame)
 
+            // 現在アクティブなスペースのウィンドウIDを取得
+            let activeSpaceIDs = AccessibilityHelper.getActiveSpaceWindowIDs()
+
             for (i, window) in sortedWindows.enumerated() {
                 guard i < frames.count else { break }
+                
+                // 現在アクティブなスペースに実在するかチェック（別スペースからの引きずり出し防止）
+                guard activeSpaceIDs.contains(window.windowID) else {
+                    Log.warn(Self.tag, "  ⚠️ ウィンドウ \"\(window.appName) - \(window.title)\" は現在のアクティブスペースに存在しないため配置をスキップします")
+                    continue
+                }
+
                 let targetFrame = frames[i]
                 Log.info(Self.tag, "  [\(i)] \"\(window.appName) - \(window.title)\" → \(targetFrame)")
 
