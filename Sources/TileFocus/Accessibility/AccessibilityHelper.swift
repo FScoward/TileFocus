@@ -180,47 +180,55 @@ enum AccessibilityHelper {
         let title = getTitle(of: window) ?? "?"
         var pid: pid_t = 0
         AXUIElementGetPid(window, &pid)
-        let beforeFrame = getFrame(of: window) ?? CGRect.zero
         
-        // 幅か高さのどちらかが大きくなる場合は「拡大」と判定
-        let isExpanding = size.width > beforeFrame.width || size.height > beforeFrame.height
+        let beforeFrameForLog = getFrame(of: window) ?? .zero
+        var actualSuccess = false
+        var lastIsExpanding = false
         
-        let waitTime: useconds_t = 20000 // 20ms: OSに処理させる適度な猶予
-        
-        // 1回目の適用：OSの画面外クリッピング制約を回避するため、拡大/縮小に応じて順番を変える
-        if isExpanding {
-            setPosition(of: window, to: position)
-            usleep(waitTime)
-            setSize(of: window, to: size)
-        } else {
-            setSize(of: window, to: size)
-            usleep(waitTime)
-            setPosition(of: window, to: position)
+        // 最大5回のリトライループで、OSのアニメーションや制約による中断を押し切る
+        for _ in 0..<5 {
+            let currentFrame = getFrame(of: window) ?? .zero
+            let isExpanding = size.width > currentFrame.width || size.height > currentFrame.height
+            lastIsExpanding = isExpanding
+            
+            // setPosition と setSize の間には待機時間を入れない（アニメーション中のキャンセルを防ぐため）
+            if isExpanding {
+                setPosition(of: window, to: position)
+                setSize(of: window, to: size)
+            } else {
+                setSize(of: window, to: size)
+                setPosition(of: window, to: position)
+            }
+            
+            // OSの非同期処理とアニメーションが少し進むのを待つ
+            usleep(20000) // 20ms
+            
+            // 適用後の実際のフレームを取得して目標と比較
+            let afterFrame = getFrame(of: window) ?? .zero
+            let widthDiff = abs(afterFrame.width - size.width)
+            let heightDiff = abs(afterFrame.height - size.height)
+            let xDiff = abs(afterFrame.origin.x - position.x)
+            let yDiff = abs(afterFrame.origin.y - position.y)
+            
+            // 許容誤差(2px)以内に収まっていれば成功とみなしてループを抜ける
+            if widthDiff <= 2 && heightDiff <= 2 && xDiff <= 2 && yDiff <= 2 {
+                actualSuccess = true
+                break
+            }
         }
         
-        // 2回目の適用：1回目のサイズ変更や移動によってOSが勝手に微調整（タイトルバー分のズレなど）した座標を上書き矯正する
-        usleep(waitTime)
-        setPosition(of: window, to: position)
-        usleep(waitTime)
-        let success = setSize(of: window, to: size)
-        
         let afterFrame = getFrame(of: window)
-        let actualSuccess: Bool
-        if success, let after = afterFrame {
-            // アプリケーション固有の最小サイズ制限等で、要求サイズと実際のサイズが異なる場合は失敗とみなす（許容誤差10px）
+        
+        // アプリケーション固有の最小サイズ制限等でどうしてもサイズが合わない場合の警告
+        if !actualSuccess, let after = afterFrame {
             let widthDiff = abs(after.width - size.width)
             let heightDiff = abs(after.height - size.height)
             if widthDiff > 10 || heightDiff > 10 {
                 Log.warn(tag, "  ⚠️ リサイズ要求サイズと実際のサイズが一致しません（最小サイズ制限の可能性）: 要求=\(size) 実際=\(after.size) (差: w=\(widthDiff) h=\(heightDiff))")
-                actualSuccess = false
-            } else {
-                actualSuccess = true
             }
-        } else {
-            actualSuccess = success
         }
         
-        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(actualSuccess) isExpanding=\(isExpanding) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrame) afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
+        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(actualSuccess) isExpanding=\(lastIsExpanding) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrameForLog) afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
         return actualSuccess
     }
 
