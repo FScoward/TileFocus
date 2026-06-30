@@ -181,8 +181,8 @@ final class WindowManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            self.isSpaceSwitching = true
             Task { @MainActor in
+                self.isSpaceSwitching = true
                 // 仮想スペース切り替え直後はOS側の状態が不安定なため、0.4 秒のディレイを設ける
                 try? await Task.sleep(nanoseconds: 400_000_000) // 0.4秒待機
                 Log.info("WindowManager", "仮想デスクトップの切り替えを検知しました。ウィンドウリストを再構成します。")
