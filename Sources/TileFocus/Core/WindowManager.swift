@@ -538,8 +538,18 @@ final class WindowManager: ObservableObject {
         }
     }
 
-    /// 現在アクティブな操作スクリーンを特定する（フォーカスされているウィンドウがあればその座標から、無ければメインスクリーン）
+    /// 現在アクティブな操作スクリーンを特定する
+    /// (1) 現在のマウスカーソルの位置が含まれるスクリーンを優先
+    /// (2) 判定できない場合はフォーカスされているウィンドウのあるスクリーン
+    /// (3) 最終フォールバックとしてメインスクリーン
     private func getActiveScreen() -> NSScreen? {
+        let mouseLocation = NSEvent.mouseLocation
+        for screen in NSScreen.screens {
+            if NSMouseInRect(mouseLocation, screen.frame, false) {
+                return screen
+            }
+        }
+        
         let screenManager = ScreenManager()
         if let focusedID = focusedWindowID,
            let focusedWindow = (managedWindows + stagedWindows).first(where: { $0.id == focusedID }) {

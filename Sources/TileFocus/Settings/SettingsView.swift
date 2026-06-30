@@ -13,7 +13,11 @@ struct SettingsView: View {
                 }
                 .tag(0)
 
-
+            TilingSettingsTab()
+                .tabItem {
+                    Label("パディング", systemImage: "square.grid.2x2")
+                }
+                .tag(1)
 
             HotKeySettingsTab()
                 .tabItem {
@@ -150,9 +154,9 @@ private struct TilingSettingsTab: View {
                 }
             }
 
-            Section("ギャップ") {
+            Section("パディング（余白）") {
                 HStack {
-                    Text("外側のマージン")
+                    Text("画面端とのパディング (外側)")
                     Spacer()
                     Slider(value: $settings.tilingGapOuter, in: 0...40, step: 2)
                         .frame(width: 150)
@@ -165,7 +169,7 @@ private struct TilingSettingsTab: View {
                 }
 
                 HStack {
-                    Text("ウィンドウ間のギャップ")
+                    Text("ウィンドウ間のパディング (内側)")
                     Spacer()
                     Slider(value: $settings.tilingGapInner, in: 0...40, step: 2)
                         .frame(width: 150)
