@@ -57,6 +57,22 @@ private struct GeneralSettingsTab: View {
                 }
             }
 
+            Section("フォーカス（遮光機能）") {
+                Toggle("選択したウィンドウ以外を暗くする (Dim)", isOn: $settings.isDimmingEnabled)
+                if settings.isDimmingEnabled {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text("暗さ（不透明度）")
+                            Spacer()
+                            Text("\(Int(settings.dimmingOpacity * 100))%")
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                        }
+                        Slider(value: $settings.dimmingOpacity, in: 0.1...0.8, step: 0.05)
+                    }
+                }
+            }
+
             Section("レイアウト (Focus Mode)") {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
@@ -104,6 +120,12 @@ private struct GeneralSettingsTab: View {
         }
         .onChange(of: settings.floatModeHeightRatio) { _ in
             WindowManager.shared.requestFocusLayoutUpdate()
+        }
+        .onChange(of: settings.isDimmingEnabled) { _ in
+            DimmingManager.shared.updateDimmingState()
+        }
+        .onChange(of: settings.dimmingOpacity) { _ in
+            DimmingManager.shared.updateFocusedWindowRect()
         }
     }
 }

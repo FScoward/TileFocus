@@ -49,6 +49,8 @@ final class AppSettings: ObservableObject {
         static let crownSwapTrigger = "crownSwapTrigger"
         static let floatModeWidthRatio = "floatModeWidthRatio"
         static let floatModeHeightRatio = "floatModeHeightRatio"
+        static let isDimmingEnabled = "isDimmingEnabled"
+        static let dimmingOpacity = "dimmingOpacity"
     }
 
     // MARK: - Settings
@@ -86,6 +88,16 @@ final class AppSettings: ObservableObject {
     /// 王冠の切り替え方法
     @Published var crownSwapTrigger: CrownSwapTrigger {
         didSet { defaults.set(crownSwapTrigger.rawValue, forKey: Keys.crownSwapTrigger) }
+    }
+
+    /// 選択したウィンドウ以外を暗くするかどうか (Dimming)
+    @Published var isDimmingEnabled: Bool {
+        didSet { defaults.set(isDimmingEnabled, forKey: Keys.isDimmingEnabled) }
+    }
+
+    /// 選択したウィンドウ以外を暗くする際の不透明度
+    @Published var dimmingOpacity: Double {
+        didSet { defaults.set(dimmingOpacity, forKey: Keys.dimmingOpacity) }
     }
 
     /// タイリングの外側ギャップ（px）
@@ -142,6 +154,11 @@ final class AppSettings: ObservableObject {
         crownSwapTrigger = CrownSwapTrigger(
             rawValue: defaults.string(forKey: Keys.crownSwapTrigger) ?? ""
         ) ?? .clickOnly
+
+        isDimmingEnabled = defaults.object(forKey: Keys.isDimmingEnabled) as? Bool ?? false
+
+        let savedDimmingOpacity = defaults.double(forKey: Keys.dimmingOpacity)
+        dimmingOpacity = savedDimmingOpacity == 0 ? 0.3 : savedDimmingOpacity
     }
 
     /// TilingGap 構造体として返す

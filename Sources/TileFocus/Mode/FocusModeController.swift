@@ -434,6 +434,7 @@ final class FocusModeController {
         if windowManager.currentMode == .float {
             applyFloatLayout()
             isApplyingLayout = false
+            DimmingManager.shared.updateFocusedWindowRect()
             return
         }
         
@@ -795,6 +796,7 @@ final class FocusModeController {
             self.windowManager?.syncActualFrames() // 物理的な配置完了後のリアル座標で最終同期！
             self.windowManager?.setTilingInProgress(false)
             self.isApplyingLayout = false
+            DimmingManager.shared.updateFocusedWindowRect()
             Log.debug(Self.tag, "setTilingInProgress(false) / isApplyingLayout=false 完了")
         }
 

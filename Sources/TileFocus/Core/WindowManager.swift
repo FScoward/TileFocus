@@ -202,6 +202,7 @@ final class WindowManager: ObservableObject {
             // 同じモードなら OFF に切り替え
             deactivateCurrentMode()
             currentMode = .off
+            DimmingManager.shared.updateDimmingState()
             return
         }
 
@@ -219,6 +220,8 @@ final class WindowManager: ObservableObject {
             focusController?.activate()
         }
 
+        DimmingManager.shared.updateDimmingState()
+
         print("[WindowManager] モード切り替え: \(newMode.displayName)")
     }
 
@@ -231,6 +234,7 @@ final class WindowManager: ObservableObject {
         case .focus, .float:
             focusController?.deactivate()
         }
+        DimmingManager.shared.updateDimmingState()
     }
 
     // MARK: - Tiling In Progress Flag
@@ -587,6 +591,10 @@ final class WindowManager: ObservableObject {
     func removeWindow(id: String) {
         managedWindows.removeAll { $0.id == id }
         stagedWindows.removeAll { $0.id == id }
+        if focusedWindowID == id {
+            focusedWindowID = nil
+            DimmingManager.shared.updateFocusedWindowRect()
+        }
         if currentMode == .tiling {
             tilingController?.retile()
         } else if currentMode == .focus || currentMode == .float {
@@ -599,6 +607,11 @@ final class WindowManager: ObservableObject {
         managedWindows.removeAll { $0.pid == pid }
         stagedWindows.removeAll { $0.pid == pid }
         stageManager?.syncStagedWindows(stagedWindows)
+        
+        if let focusedID = focusedWindowID, focusedID.hasPrefix("\(pid)-") {
+            focusedWindowID = nil
+            DimmingManager.shared.updateFocusedWindowRect()
+        }
         
         if currentMode == .tiling {
             tilingController?.retile()
@@ -620,6 +633,7 @@ final class WindowManager: ObservableObject {
     /// Focus Mode のフォーカスウィンドウ ID を更新する（FocusModeController から呼ばれる）
     func updateFocusedWindowID(_ id: String?) {
         focusedWindowID = id
+        DimmingManager.shared.updateFocusedWindowRect()
     }
 
     /// Focus Mode のマスターウィンドウ ID を更新する（FocusModeController から呼ばれる）
@@ -717,6 +731,9 @@ extension WindowManager: WindowObserverDelegate {
         Task { @MainActor in
             if let index = managedWindows.firstIndex(where: { $0.id == window.id }) {
                 managedWindows[index].frame = window.frame
+                if focusedWindowID == window.id {
+                    DimmingManager.shared.updateFocusedWindowRect()
+                }
             }
         }
     }
@@ -729,6 +746,14 @@ extension WindowManager: WindowObserverDelegate {
         Task { @MainActor in
             if currentMode == .focus || currentMode == .float {
                 focusController?.handleFocusChanged(pid: pid, title: title)
+            } else if currentMode == .tiling {
+                let managed = managedWindows
+                if let match = managed.first(where: { $0.pid == pid && ($0.title == title || title.isEmpty) }) ?? managed.first(where: { $0.pid == pid }) {
+                    if match.id != focusedWindowID {
+                        focusedWindowID = match.id
+                        DimmingManager.shared.updateFocusedWindowRect()
+                    }
+                }
             }
         }
     }
