@@ -185,19 +185,23 @@ enum AccessibilityHelper {
         // 幅か高さのどちらかが大きくなる場合は「拡大」と判定
         let isExpanding = size.width > beforeFrame.width || size.height > beforeFrame.height
         
+        let waitTime: useconds_t = 20000 // 20ms: OSに処理させる適度な猶予
+        
         // 1回目の適用：OSの画面外クリッピング制約を回避するため、拡大/縮小に応じて順番を変える
         if isExpanding {
             setPosition(of: window, to: position)
+            usleep(waitTime)
             setSize(of: window, to: size)
         } else {
             setSize(of: window, to: size)
+            usleep(waitTime)
             setPosition(of: window, to: position)
         }
         
         // 2回目の適用：1回目のサイズ変更や移動によってOSが勝手に微調整（タイトルバー分のズレなど）した座標を上書き矯正する
-        // パス1の処理がOS側で完了するのを待ってからパス2を実行することで、矯正の精度を上げる
-        usleep(50000) // 50ms: パス1の完了待ち
+        usleep(waitTime)
         setPosition(of: window, to: position)
+        usleep(waitTime)
         let success = setSize(of: window, to: size)
         
         let afterFrame = getFrame(of: window)
