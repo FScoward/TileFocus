@@ -804,14 +804,16 @@ final class FocusModeController {
             AccessibilityHelper.focus(window: axWindowToFocus)
         }
 
-        // focus() 後の OS によるウィンドウ微小移動通知を吸収するため少し遅らせて false に戻す
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+        // レイアウト計算と命令送信自体は終わったので、フォーカス追従などのロックはすぐに解除する
+        self.isApplyingLayout = false
+        
+        // OSのウィンドウ移動アニメーション（最大で1秒以上かかることがある）を完全に吸収するため、十分な時間(1.5秒)遅らせてから無視フラグを解除する
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self else { return }
             self.windowManager?.syncActualFrames() // 物理的な配置完了後のリアル座標で最終同期！
             self.windowManager?.setTilingInProgress(false)
-            self.isApplyingLayout = false
             DimmingManager.shared.updateFocusedWindowRect()
-            Log.debug(Self.tag, "setTilingInProgress(false) / isApplyingLayout=false 完了")
+            Log.debug(Self.tag, "setTilingInProgress(false) 完了 (アニメーション吸収完了)")
         }
 
         Log.info(Self.tag, "applyLayout() 完了")

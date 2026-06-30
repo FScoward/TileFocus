@@ -183,13 +183,13 @@ final class TilingModeController {
         windowManager.updateFrames(appliedFrames)
         windowManager.updateLastIdealSizes(appliedIdealSizes)
 
-        // レイアウト適用後の残留通知を吧めるため少し遅らせて false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        // OSのウィンドウ移動アニメーションを完全に吸収するため、十分な時間(1.5秒)遅らせてから無視フラグを解除する
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
             guard let self else { return }
-            self.windowManager?.syncActualFrames() // 物理的な配置完了後のリアル座標で最終同期！
+            self.windowManager?.syncActualFrames() // 物理的な配置完了後のリアル座標で最終同期
             self.windowManager?.setTilingInProgress(false)
             DimmingManager.shared.updateFocusedWindowRect()
-            Log.debug(Self.tag, "setTilingInProgress(false) 完了")
+            Log.debug(Self.tag, "setTilingInProgress(false) 完了 (アニメーション吸収完了)")
         }
 
         Log.info(Self.tag, "applyTiling() 完了")
