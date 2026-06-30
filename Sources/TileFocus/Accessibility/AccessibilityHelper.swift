@@ -183,25 +183,16 @@ enum AccessibilityHelper {
         let beforeFrameForLog = getFrame(of: window) ?? .zero
         
         let isExpanding = size.width > beforeFrameForLog.width || size.height > beforeFrameForLog.height
-        let waitTime: useconds_t = 20000 // 20ms
         
-        // パス1：OSの内部パニック（API競合）を防ぐため、間に短い待機を入れる
         if isExpanding {
             setPosition(of: window, to: position)
-            usleep(waitTime)
             setSize(of: window, to: size)
         } else {
             setSize(of: window, to: size)
-            usleep(waitTime)
             setPosition(of: window, to: position)
         }
         
-        // OSがウィンドウのフレーム補正やアニメーションをある程度進めるのを待つ
-        usleep(40000) // 40ms
-        
-        // パス2：1回目の競合で未適用になった部分や、OSによる微小なズレをダメ押しで矯正
         setPosition(of: window, to: position)
-        usleep(waitTime)
         let success = setSize(of: window, to: size)
         
         let afterFrame = getFrame(of: window)
