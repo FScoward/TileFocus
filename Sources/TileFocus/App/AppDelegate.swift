@@ -19,10 +19,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // 権限なし → アラート表示してシステム設定を促す
             showPermissionAlert()
             
-            // アプリを終了させず、権限が許可されるのを繰り返しチェック（3分間）
+            // 権限が許可されるのを繰り返しチェックし、許可されたらアプリを自動再起動する
             PermissionChecker.waitForPermission(interval: 1.0, maxRetries: 180) {
-                print("[AppDelegate] アクセシビリティ権限が付与されました。ウィンドウ監視を開始します。")
-                WindowManager.shared.startObserving()
+                print("[AppDelegate] アクセシビリティ権限が付与されました。アプリを再起動します。")
+                let url = URL(fileURLWithPath: Bundle.main.bundlePath)
+                let configuration = NSWorkspace.OpenConfiguration()
+                configuration.createsNewApplicationInstance = true
+                NSWorkspace.shared.openApplication(at: url, configuration: configuration) { _, _ in
+                    DispatchQueue.main.async {
+                        NSApp.terminate(nil)
+                    }
+                }
             }
         }
     }
