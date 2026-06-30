@@ -64,22 +64,36 @@ final class StageTopBarController: NSObject {
     private let visibleOffset: CGFloat = 8 // 隠れている時に画面内に露出させるピクセル数（ホバー検知用）
     
     @MainActor
+    private func getBarWidth(for screen: NSScreen, windowManager: WindowManager) -> CGFloat {
+        if windowManager.currentMode == .float {
+            let wins = getWindowsForScreen(screen: screen, windowManager: windowManager)
+            let totalCount = wins.active.count + wins.staged.count
+            // 1個あたり 48px + 間隔 12px、左右パディング 16px * 2 = 32px
+            let calculatedWidth = CGFloat(totalCount) * (48 + 12) - 12 + 32
+            return max(180, min(620, calculatedWidth))
+        } else {
+            return barWidth
+        }
+    }
+    
+    @MainActor
     func show(windowManager: WindowManager) {
         hide() // 既存のパネルをクリア
 
         for screen in NSScreen.screens {
             let screenFrame = screen.visibleFrame
+            let currentBarWidth = getBarWidth(for: screen, windowManager: windowManager)
             
             // 初期状態（隠れている状態: 下端が screenFrame.maxY - visibleOffset になる位置）
-            let initialX = screenFrame.minX + (screenFrame.width - barWidth) / 2
+            let initialX = screenFrame.minX + (screenFrame.width - currentBarWidth) / 2
             let initialY = screenFrame.maxY - visibleOffset
             // 初期高さは collapsedHeight(4px)
-            let panelFrame = CGRect(x: initialX, y: initialY, width: barWidth, height: collapsedHeight)
+            let panelFrame = CGRect(x: initialX, y: initialY, width: currentBarWidth, height: collapsedHeight)
             
             let panel = StageTopBarPanel(contentRect: panelFrame)
             
             // コンテナビューの作成
-            let container = StageTopBarContainerView(frame: CGRect(x: 0, y: 0, width: barWidth, height: collapsedHeight))
+            let container = StageTopBarContainerView(frame: CGRect(x: 0, y: 0, width: currentBarWidth, height: collapsedHeight))
             container.autoresizingMask = [.width, .height]
             
             // NSVisualEffectView を作成して背景に設定（本物のすりガラス効果）
@@ -156,11 +170,14 @@ final class StageTopBarController: NSObject {
     @MainActor
     private func updatePanelCollapseState(collapsed: Bool, panel: StageTopBarPanel, screen: NSScreen, windowManager: WindowManager) {
         let screenFrame = screen.visibleFrame
-        let x = screenFrame.minX + (screenFrame.width - barWidth) / 2
+        let currentBarWidth = getBarWidth(for: screen, windowManager: windowManager)
+        let x = screenFrame.minX + (screenFrame.width - currentBarWidth) / 2
         
         let targetHeight: CGFloat
         if collapsed {
             targetHeight = collapsedHeight
+        } else if windowManager.currentMode == .float {
+            targetHeight = 64
         } else {
             // そのスクリーンに属するウィンドウ数を動的に取得して高さを計算
             let wins = getWindowsForScreen(screen: screen, windowManager: windowManager)
@@ -190,7 +207,7 @@ final class StageTopBarController: NSObject {
         }
         
         let targetY = collapsed ? (screenFrame.maxY - visibleOffset) : (screenFrame.maxY - targetHeight)
-        let targetFrame = CGRect(x: x, y: targetY, width: barWidth, height: targetHeight)
+        let targetFrame = CGRect(x: x, y: targetY, width: currentBarWidth, height: targetHeight)
         
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.2
@@ -324,6 +341,17 @@ struct StageTopBarView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .frame(height: 30)
+                    } else if windowManager.currentMode == .float {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 12) {
+                                ForEach(Array(tempWindows.enumerated()), id: \.element.id) { index, window in
+                                    floatWindowItem(window, index: index)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                        }
+                        .frame(height: 64)
                     } else {
                         VStack(spacing: 8) {
                             // アクティブウィンドウ（左、メイン、右の3列）
@@ -928,6 +956,191 @@ struct StageTopBarView: View {
                     draggedWindow = nil
                 }
         )
+    }
+
+    @ViewBuilder
+    private func floatWindowItem(_ window: ManagedWindow, index: Int) -> some View {
+        let isStaged = windowManager.stagedWindows.contains(where: { $0.id == window.id })
+        let isMaster = windowManager.masterWindow?.id == window.id
+        let isFocused = windowManager.focusedWindowID == window.id
+        let isHovered = hoveredWindowID == window.id
+        
+        let borderGradient = LinearGradient(
+            colors: [
+                isFocused ? Color.purple.opacity(0.8) : (isHovered ? Color.white.opacity(0.4) : Color.white.opacity(0.15)),
+                isFocused ? Color.blue.opacity(0.6) : Color.white.opacity(0.05),
+                Color.black.opacity(0.1)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        let masterBorderGradient = LinearGradient(
+            colors: [Color.yellow.opacity(0.4), Color.yellow.opacity(0.4)],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        
+        let itemBg = ZStack {
+            RoundedRectangle(cornerRadius: 8)
+                .fill(.ultraThinMaterial)
+            
+            if isMaster {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(LinearGradient(
+                        colors: [Color.yellow.opacity(0.18), Color.orange.opacity(0.08)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+            } else if isHovered {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(LinearGradient(
+                        colors: [Color.purple.opacity(0.18), Color.blue.opacity(0.18)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+            } else {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(LinearGradient(
+                        colors: [Color.white.opacity(isStaged ? 0.01 : 0.03), Color.white.opacity(isStaged ? 0.003 : 0.01)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ))
+            }
+        }
+        
+        ZStack {
+            // 背景とメインコンテンツの枠
+            itemBg
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(isMaster ? masterBorderGradient : borderGradient, lineWidth: isFocused ? 1.5 : 0.8)
+                )
+            
+            // アプリアイコン
+            if let app = NSRunningApplication(processIdentifier: window.pid),
+               let icon = app.icon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 32, height: 32)
+                    .cornerRadius(6)
+                    .opacity(isStaged ? 0.4 : 1.0)
+            } else {
+                // フォールバック
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isStaged ? Color.secondary.opacity(0.15) : Color.accentColor.opacity(0.15))
+                    Text(String(window.appName.prefix(1)))
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(isStaged ? Color.secondary : Color.accentColor)
+                }
+                .frame(width: 32, height: 32)
+            }
+            
+            // インデックス番号バッジ (左上)
+            Text("\(index + 1)")
+                .font(.system(size: 8, weight: .bold, design: .rounded))
+                .foregroundStyle(.white)
+                .frame(width: 14, height: 14)
+                .background(
+                    Circle()
+                        .fill(isFocused ? Color.yellow : Color.purple)
+                )
+                .shadow(color: .black.opacity(0.15), radius: 1.5, x: 0, y: 1)
+                .offset(x: -20, y: -20)
+            
+            // 王冠バッジ (右上)
+            if isMaster {
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(Color.yellow)
+                    .frame(width: 14, height: 14)
+                    .background(Circle().fill(Color.black.opacity(0.6)))
+                    .shadow(color: .black.opacity(0.15), radius: 1.5, x: 0, y: 1)
+                    .offset(x: 20, y: -20)
+                    .onTapGesture {
+                        windowManager.setMasterWindow(to: window.id)
+                    }
+            } else if isHovered {
+                Image(systemName: "crown")
+                    .font(.system(size: 8))
+                    .foregroundStyle(Color.secondary)
+                    .frame(width: 14, height: 14)
+                    .background(Circle().fill(Color.black.opacity(0.6)))
+                    .shadow(color: .black.opacity(0.15), radius: 1.5, x: 0, y: 1)
+                    .offset(x: 20, y: -20)
+                    .onTapGesture {
+                        windowManager.setMasterWindow(to: window.id)
+                    }
+            }
+            
+            // 格納状態・表示トグルバッジ (右下)
+            if isHovered || isStaged {
+                Image(systemName: isStaged ? "eye.slash" : "eye.fill")
+                    .font(.system(size: 8))
+                    .foregroundStyle(isStaged ? Color.secondary.opacity(0.6) : Color.accentColor)
+                    .frame(width: 14, height: 14)
+                    .background(Circle().fill(Color.black.opacity(0.6)))
+                    .shadow(color: .black.opacity(0.15), radius: 1.5, x: 0, y: 1)
+                    .offset(x: 20, y: 20)
+                    .onTapGesture {
+                        if isStaged {
+                            windowManager.unstageWindow(window)
+                        } else {
+                            windowManager.stageWindow(window)
+                        }
+                    }
+            }
+        }
+        .frame(width: 48, height: 48)
+        .shadow(
+            color: isHovered ? (isMaster ? Color.yellow.opacity(0.12) : Color.purple.opacity(0.12)) : Color.clear,
+            radius: 3,
+            x: 0,
+            y: 1.5
+        )
+        .scaleEffect(isHovered ? 1.05 : 1.0)
+        .animation(.spring(response: 0.2, dampingFraction: 0.7, blendDuration: 0), value: isHovered)
+        .onHover { hovering in
+            hoveredWindowID = hovering ? window.id : nil
+        }
+        .help("\(window.appName) - \(window.title)")
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isStaged {
+                windowManager.unstageWindow(window)
+            }
+            
+            let trigger = AppSettings.shared.crownSwapTrigger
+            if trigger == .clickOnly {
+                windowManager.setMasterWindow(to: window.id)
+            } else {
+                if windowManager.isControlShiftPressed() {
+                    windowManager.setMasterWindow(to: window.id)
+                } else {
+                    windowManager.activateWindowWithoutChangingMaster(to: window.id)
+                }
+            }
+        }
+        .onTapGesture(count: 2) {
+            if isStaged {
+                windowManager.unstageWindow(window)
+            }
+            windowManager.setMasterWindow(to: window.id)
+        }
+        .contextMenu {
+            Button(isMaster ? "マスター（王冠）を解除" : "マスター（王冠）に設定") {
+                windowManager.setMasterWindow(to: window.id)
+            }
+            Button(isStaged ? "画面に復帰" : "画面から格納") {
+                if isStaged {
+                    windowManager.unstageWindow(window)
+                } else {
+                    windowManager.stageWindow(window)
+                }
+            }
+        }
     }
 }
 
