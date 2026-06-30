@@ -50,7 +50,9 @@ final class WindowManager: ObservableObject {
     /// ユーザーがドラッグ＆ドロップで並べ替えたウィンドウIDの順序
     @Published var customWindowOrder: [String] = [] {
         didSet {
-            triggerLayoutUpdate()
+            if !isBatchingLayoutStateUpdate {
+                triggerLayoutUpdate()
+            }
         }
     }
 
@@ -117,6 +119,18 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    func updateLayoutState(customWindowOrder: [String], focusedWindowID: String?, masterWindowID: String?) {
+        isBatchingLayoutStateUpdate = true
+        self.customWindowOrder = customWindowOrder
+        if currentMode == .focus || currentMode == .float {
+            self.focusedWindowID = focusedWindowID
+            self.masterWindowID = masterWindowID
+            focusController?.updateLayoutSelection(focusedID: focusedWindowID, masterID: masterWindowID)
+        }
+        isBatchingLayoutStateUpdate = false
+        triggerLayoutUpdate()
+    }
+
 
     // MARK: - Internal Components
 
@@ -128,6 +142,8 @@ final class WindowManager: ObservableObject {
     private var workspaceObservers: [NSObjectProtocol] = []
     /// 仮想スペースUUID（またはモニターID）ごとのマスターウィンドウIDの記憶
     private var masterWindowIDsBySpace: [String: String] = [:]
+    private var tilingGuardGeneration: UInt64 = 0
+    private var isBatchingLayoutStateUpdate = false
     var isSpaceSwitching: Bool = false
     #if DEBUG
     var isTestingMode: Bool = false
@@ -250,7 +266,30 @@ final class WindowManager: ObservableObject {
 
     /// タイリング適用中かどうか（移動通知の無限ループ防止用）
     func setTilingInProgress(_ inProgress: Bool) {
+        if inProgress {
+            tilingGuardGeneration &+= 1
+        }
         windowObserver?.isTiling = inProgress
+    }
+
+    /// AX API による移動・リサイズ直後の遅延通知を、自分の操作として吸収する。
+    func finishTilingInProgressAfterWindowSettles(
+        delay: TimeInterval = 1.5,
+        afterSync: (() -> Void)? = nil
+    ) {
+        let generation = tilingGuardGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            guard generation == self.tilingGuardGeneration else {
+                Log.debug("WindowManager", "古いウィンドウ移動ガード解除をスキップ generation=\(generation) current=\(self.tilingGuardGeneration)")
+                return
+            }
+            self.syncActualFrames()
+            self.setTilingInProgress(false)
+            DimmingManager.shared.updateFocusedWindowRect()
+            Log.debug("WindowManager", "setTilingInProgress(false) 完了 (ウィンドウ移動通知の吸収完了)")
+            afterSync?()
+        }
     }
 
     /// 外部コンポーネントからタイリング再適用をリクエストする

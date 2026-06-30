@@ -24,6 +24,7 @@ enum AccessibilityHelper {
     #endif
 
     private static let tag = "AccessibilityHelper"
+    private static var moveAndResizeLogID: UInt64 = 0
 
     // MARK: - Window Enumeration
 
@@ -174,6 +175,47 @@ enum AccessibilityHelper {
 
     // MARK: - Move & Resize
 
+    private struct FrameCheck {
+        let frame: CGRect
+        let xDiff: CGFloat
+        let yDiff: CGFloat
+        let widthDiff: CGFloat
+        let heightDiff: CGFloat
+
+        var maxDiff: CGFloat {
+            max(xDiff, yDiff, widthDiff, heightDiff)
+        }
+
+        var isAcceptable: Bool {
+            xDiff <= 10 && yDiff <= 10 && widthDiff <= 10 && heightDiff <= 10
+        }
+    }
+
+    private static func checkFrame(_ frame: CGRect, against position: CGPoint, size: CGSize) -> FrameCheck {
+        FrameCheck(
+            frame: frame,
+            xDiff: abs(frame.minX - position.x),
+            yDiff: abs(frame.minY - position.y),
+            widthDiff: abs(frame.width - size.width),
+            heightDiff: abs(frame.height - size.height)
+        )
+    }
+
+    private static func applyMoveAndResizePass(window: AXUIElement, to position: CGPoint, size: CGSize, waitTime: useconds_t) -> Bool {
+        let before = getFrame(of: window) ?? .zero
+        let isExpanding = size.width > before.width || size.height > before.height
+        if isExpanding {
+            setPosition(of: window, to: position)
+            usleep(waitTime)
+            return setSize(of: window, to: size)
+        } else {
+            let success = setSize(of: window, to: size)
+            usleep(waitTime)
+            setPosition(of: window, to: position)
+            return success
+        }
+    }
+
     /// ウィンドウを指定位置・サイズに即時移動し、リサイズが成功したかを返す
     @discardableResult
     static func moveAndResize(window: AXUIElement, to position: CGPoint, size: CGSize) -> Bool {
@@ -181,36 +223,91 @@ enum AccessibilityHelper {
         var pid: pid_t = 0
         AXUIElementGetPid(window, &pid)
         let beforeFrameForLog = getFrame(of: window) ?? .zero
+        moveAndResizeLogID &+= 1
+        let logID = moveAndResizeLogID
         
         let isExpanding = size.width > beforeFrameForLog.width || size.height > beforeFrameForLog.height
+        let waitTime: useconds_t = 20000 // 20ms
+        let retrySettleTime: useconds_t = 70000 // 70ms
+        let minimumRetryCount = 8
+        let maxRetryCount = 24
+        let progressTolerance: CGFloat = 2
+        let maxNoProgressCount = 5
+        Log.debug(tag, "[move#\(logID)] start pid=\(pid) \"\(title)\" before=\(beforeFrameForLog) requestPos=\(position) requestSize=\(size) isExpanding=\(isExpanding)")
         
         if isExpanding {
             setPosition(of: window, to: position)
-            setSize(of: window, to: size)
+            usleep(waitTime)
+            _ = setSize(of: window, to: size)
         } else {
-            setSize(of: window, to: size)
+            _ = setSize(of: window, to: size)
+            usleep(waitTime)
             setPosition(of: window, to: position)
         }
-        
+        Log.debug(tag, "[move#\(logID)] after pass1 frame=\(getFrame(of: window).map { "\($0)" } ?? "nil")")
+
+        // OSがウィンドウのフレーム補正やアニメーションをある程度進めるのを待つ
+        usleep(40000) // 40ms
+        Log.debug(tag, "[move#\(logID)] after settle frame=\(getFrame(of: window).map { "\($0)" } ?? "nil")")
+
+        // パス2：1回目の競合で未適用になった部分や、OSによる微小なズレをダメ押しで矯正
         setPosition(of: window, to: position)
         let success = setSize(of: window, to: size)
+        usleep(waitTime)
+        setPosition(of: window, to: position)
+        Log.debug(tag, "[move#\(logID)] after pass2 frame=\(getFrame(of: window).map { "\($0)" } ?? "nil") setSizeSuccess=\(success)")
         
-        let afterFrame = getFrame(of: window)
-        var actualSuccess = success
-        
+        var rawSetSizeSuccess = success
+        var afterFrame = getFrame(of: window)
+        var check = afterFrame.map { checkFrame($0, against: position, size: size) }
+        var bestMaxDiff = check?.maxDiff ?? CGFloat.greatestFiniteMagnitude
+        var noProgressCount = 0
+
+        if check?.isAcceptable != true {
+            for retry in 1...maxRetryCount {
+                rawSetSizeSuccess = applyMoveAndResizePass(window: window, to: position, size: size, waitTime: waitTime) || rawSetSizeSuccess
+                usleep(retrySettleTime)
+                setPosition(of: window, to: position)
+                usleep(waitTime)
+                afterFrame = getFrame(of: window)
+                check = afterFrame.map { checkFrame($0, against: position, size: size) }
+
+                if let check {
+                    let improved = check.maxDiff < bestMaxDiff - progressTolerance
+                    if improved {
+                        bestMaxDiff = check.maxDiff
+                        noProgressCount = 0
+                    } else {
+                        noProgressCount += 1
+                    }
+
+                    Log.debug(tag, "[move#\(logID)] retry \(retry)/\(maxRetryCount) frame=\(check.frame) diff=(x=\(check.xDiff), y=\(check.yDiff), w=\(check.widthDiff), h=\(check.heightDiff)) maxDiff=\(check.maxDiff) improved=\(improved) noProgress=\(noProgressCount)")
+                    if check.isAcceptable {
+                        break
+                    }
+                    if retry >= minimumRetryCount && noProgressCount >= maxNoProgressCount {
+                        Log.debug(tag, "[move#\(logID)] retry stop: 差分改善が止まったため打ち切り retry=\(retry) bestMaxDiff=\(bestMaxDiff)")
+                        break
+                    }
+                } else {
+                    Log.warn(tag, "[move#\(logID)] retry \(retry)/\(maxRetryCount) frame=nil")
+                }
+            }
+        }
+
+        let actualSuccess = check?.isAcceptable == true
+
         // アプリケーション固有の最小サイズ制限等でどうしてもサイズが合わない場合の警告と判定
-        if let after = afterFrame {
-            let widthDiff = abs(after.width - size.width)
-            let heightDiff = abs(after.height - size.height)
-            if widthDiff > 10 || heightDiff > 10 {
-                Log.warn(tag, "  ⚠️ リサイズ要求サイズと実際のサイズが一致しません（最小サイズ制限の可能性）: 要求=\(size) 実際=\(after.size) (差: w=\(widthDiff) h=\(heightDiff))")
-                actualSuccess = false
-            } else {
-                actualSuccess = true
+        if let check, !check.isAcceptable {
+            if check.xDiff > 10 || check.yDiff > 10 {
+                Log.warn(tag, "[move#\(logID)]   ⚠️ 移動要求位置と実際の位置が一致しません: 要求=\(position) 実際=\(check.frame.origin) (差: x=\(check.xDiff) y=\(check.yDiff))")
+            }
+            if check.widthDiff > 10 || check.heightDiff > 10 {
+                Log.warn(tag, "[move#\(logID)]   ⚠️ リサイズ要求サイズと実際のサイズが一致しません（最小サイズ制限の可能性）: 要求=\(size) 実際=\(check.frame.size) (差: w=\(check.widthDiff) h=\(check.heightDiff))")
             }
         }
         
-        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(actualSuccess) isExpanding=\(isExpanding) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrameForLog) afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
+        Log.debug(tag, "[move#\(logID)] finish pid=\(pid) \"\(title)\" success=\(actualSuccess) rawSetSizeSuccess=\(rawSetSizeSuccess) isExpanding=\(isExpanding) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrameForLog) afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
         return actualSuccess
     }
 
@@ -218,6 +315,20 @@ enum AccessibilityHelper {
     @discardableResult
     static func setFrame(_ frame: CGRect, to window: AXUIElement) -> Bool {
         return moveAndResize(window: window, to: frame.origin, size: frame.size)
+    }
+
+    @discardableResult
+    static func setPositionOnly(of window: AXUIElement, to position: CGPoint) -> Bool {
+        setPosition(of: window, to: position)
+        usleep(20000)
+        guard let after = getPosition(of: window) else { return false }
+        let xDiff = abs(after.x - position.x)
+        let yDiff = abs(after.y - position.y)
+        if xDiff > 10 || yDiff > 10 {
+            Log.warn(tag, "setPositionOnly: 位置補正が一致しません request=\(position) actual=\(after) diff=(\(xDiff), \(yDiff))")
+            return false
+        }
+        return true
     }
 
     // MARK: - Title

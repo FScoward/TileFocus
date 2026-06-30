@@ -222,6 +222,8 @@ private struct HotKeySettingsTab: View {
     }
 }
 
+#if canImport(PreviewsMacros)
 #Preview {
     SettingsView()
 }
+#endif

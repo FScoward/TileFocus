@@ -21,6 +21,8 @@ final class FocusModeController {
     private var masterWindowID: String?
     private var floatModeOriginalFrames: [String: CGRect] = [:]
     private var focusHistory: [String] = []
+    private var mainAcceptedSizesByWindowID: [String: CGSize] = [:]
+    private var isPostSettleRepairing = false
     private var workspaceObservers: [NSObjectProtocol] = []
     private var updateWorkItem: DispatchWorkItem?
     /// applyLayout() 実行中フラグ
@@ -123,7 +125,7 @@ final class FocusModeController {
                     Log.info(Self.tag, "[FloatMode] deactivate 時のフレーム復帰: \(window.appName) -> \(originalFrame)")
                     windowManager.setTilingInProgress(true)
                     AccessibilityHelper.setFrame(originalFrame, to: axWindow)
-                    windowManager.setTilingInProgress(false)
+                    windowManager.finishTilingInProgressAfterWindowSettles()
                 }
             }
         }
@@ -224,9 +226,18 @@ final class FocusModeController {
     /// フォーカスウィンドウのみを切り替え、マスター（王冠）は変更しない
     func switchFocusedWindowOnly(to id: String) {
         guard let windowManager, (windowManager.currentMode == .focus || windowManager.currentMode == .float) else { return }
+        guard focusedWindowID != id else {
+            Log.debug(Self.tag, "  フォーカス切り替え（マスター変更なし）: 変更なし \(id)")
+            return
+        }
         Log.info(Self.tag, "  フォーカス切り替え（マスター変更なし）: \(focusedWindowID ?? "nil") → \(id)")
         setFocusedWindowID(id)
         applyLayout()
+    }
+
+    func updateLayoutSelection(focusedID: String?, masterID: String?) {
+        focusedWindowID = focusedID
+        masterWindowID = masterID
     }
 
     /// WindowObserver からフォーカス変更の通知を受け取る（同じアプリ内のウィンドウ切り替え等に対応）
@@ -377,7 +388,7 @@ final class FocusModeController {
                         Log.info(Self.tag, "[FloatMode] 王冠が外れたため元のフレームに復帰: \(window.appName) -> \(originalFrame)")
                         windowManager.setTilingInProgress(true)
                         AccessibilityHelper.setFrame(originalFrame, to: axWindow)
-                        windowManager.setTilingInProgress(false)
+                        windowManager.finishTilingInProgressAfterWindowSettles()
                     }
                     floatModeOriginalFrames.removeValue(forKey: window.id)
                 }
@@ -422,7 +433,7 @@ final class FocusModeController {
                 
                 windowManager.setTilingInProgress(true)
                 AccessibilityHelper.setFrame(targetFrame, to: axWindow)
-                windowManager.setTilingInProgress(false)
+                windowManager.finishTilingInProgressAfterWindowSettles()
                 
                 // アクティブにする（フォーカスされているのがマスターの場合のみ）
                 if focusedWindowID == masterID {
@@ -434,11 +445,11 @@ final class FocusModeController {
 
     func applyLayout() {
         isApplyingLayout = true
+        defer { isApplyingLayout = false }
         guard let windowManager else { return }
         
         if windowManager.currentMode == .float {
             applyFloatLayout()
-            isApplyingLayout = false
             DimmingManager.shared.updateFocusedWindowRect()
             return
         }
@@ -479,7 +490,6 @@ final class FocusModeController {
 
         guard !allWindows.isEmpty else {
             Log.warn(Self.tag, "applyLayout: 対象ウィンドウなし")
-            isApplyingLayout = false
             return
         }
 
@@ -497,6 +507,7 @@ final class FocusModeController {
         // スクリーン別グループ化
         var screenGroups: [[ManagedWindow]] = Array(repeating: [], count: max(screens.count, 1))
         for window in ordered {
+            var resolvedWindow = window
             var currentFrame = window.frame
             if window.state != .staged {
                 if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title),
@@ -508,9 +519,17 @@ final class FocusModeController {
                     currentFrame = beforeStaging
                 }
             }
+            resolvedWindow.frame = currentFrame
             
-            let idx = screenIndex(for: currentFrame, in: screens)
-            screenGroups[idx].append(window)
+            let placement = screenPlacement(for: currentFrame, in: screens)
+            let isSelected = window.id == focusedWindowID || window.id == masterWindowID
+            if placement.visibleRatio < 0.12 && !isSelected {
+                Log.info(Self.tag, "  ほぼ画面外のため通常配置から除外: \"\(window.appName) - \(window.title)\" frame=\(currentFrame) visibleRatio=\(placement.visibleRatio)")
+                continue
+            }
+
+            let idx = placement.index
+            screenGroups[idx].append(resolvedWindow)
         }
 
 
@@ -583,7 +602,6 @@ final class FocusModeController {
             screenMainCounts[si] = mainCount
             
             let mains = Array(sortedGroup.prefix(mainCount))
-            let sides = Array(sortedGroup.dropFirst(mainCount))
 
             if monitorStyle == .absoluteSplit2 || monitorStyle == .absoluteSplit3 {
                 // mains (上位2/3個) の中で staged になっているものを unstage する
@@ -594,13 +612,9 @@ final class FocusModeController {
                         hasStateChanged = true
                     }
                 }
-                // sides (上位からあぶれたもの) の中で staged でないものを stage (Dock) する
-                for window in sides {
-                    if window.state != .staged {
-                        Log.info(Self.tag, "完全分割の上位から外れたため格納: \"\(window.appName) - \(window.title)\"")
-                        windowManager.stageWindow(window, forceDock: true)
-                        hasStateChanged = true
-                    }
+                let notPlacedCount = max(0, sortedGroup.count - mainCount)
+                if notPlacedCount > 0 {
+                    Log.info(Self.tag, "完全分割の表示枠を超えた \(notPlacedCount) 件は自動格納しません")
                 }
                 activeGroups[si] = mains.filter { $0.state != .staged }
             } else {
@@ -612,18 +626,25 @@ final class FocusModeController {
         if hasStateChanged {
             // 格納・復帰によって managedWindows / stagedWindows が更新され、
             // 自動的に次の applyLayout がスケジュールされるため、今回の配置処理はスキップする
-            isApplyingLayout = false
             return
         }
 
         // フェーズ2: ウィンドウの物理配置適用
         // タイリング中フラグ
         windowManager.setTilingInProgress(true)
-
         // フォーカスするウィンドウの AXUIElement
         var axWindowToFocus: AXUIElement? = nil
         var appliedFrames: [(id: String, frame: CGRect)] = []
         var appliedIdealSizes: [(id: String, size: CGSize)] = []
+        struct SidePlacement {
+            let id: String
+            let name: String
+            let axWindow: AXUIElement
+            let isLeft: Bool
+            let targetFrame: CGRect
+            var frame: CGRect
+            let resistedHeight: Bool
+        }
 
         for (si, _) in screenGroups.enumerated() {
             guard let activeGroup = activeGroups[si], !activeGroup.isEmpty else { continue }
@@ -649,6 +670,7 @@ final class FocusModeController {
             var actualLeftW: CGFloat? = nil
             var actualRightX: CGFloat? = nil
             var actualRightW: CGFloat? = nil
+            var sidePlacements: [SidePlacement] = []
 
             // 現在アクティブなスペースのウィンドウIDを取得
             let activeSpaceIDs = AccessibilityHelper.getActiveSpaceWindowIDs()
@@ -670,30 +692,63 @@ final class FocusModeController {
                     AccessibilityHelper.restore(window: axWindow)
                 }
 
-                let targetFrame: CGRect
-                let role: String
+                var targetFrame: CGRect
+                var role: String
                 var isLeftWindow = false
                 var isRightWindow = false
 
                 let isMain = i < mainCount
 
                 if isMain {
-                    // MAIN ウィンドウは常に理想通りのサイズで配置
-                    targetFrame = idealFrames[min(i, idealFrames.count - 1)]
+                    let idealFrame = idealFrames[min(i, idealFrames.count - 1)]
+                    let actualSize = window.frame.size
+                    let rememberedMainSize = mainAcceptedSizesByWindowID[window.id]
+                    let lastIdealLooksLikeCurrentMain = window.lastIdealSize.map {
+                        abs($0.width - idealFrame.width) <= 5 && abs($0.height - idealFrame.height) <= 5
+                    } ?? false
+                    let usesConstrainedSize: Bool
+                    if window.isResizeFailed, rememberedMainSize != nil, lastIdealLooksLikeCurrentMain {
+                        usesConstrainedSize = true
+                    } else if window.isResizeFailed {
+                        usesConstrainedSize = lastIdealLooksLikeCurrentMain
+                    } else {
+                        usesConstrainedSize = false
+                    }
+
+                    if usesConstrainedSize {
+                        let constrainedSize = rememberedMainSize ?? actualSize
+                        let targetW = min(max(100, constrainedSize.width), idealFrame.width)
+                        let targetH = min(max(100, constrainedSize.height), idealFrame.height)
+                        targetFrame = CGRect(
+                            x: idealFrame.midX - targetW / 2,
+                            y: idealFrame.minY,
+                            width: targetW,
+                            height: targetH
+                        )
+                        Log.debug(Self.tag, "    MAIN constraint \"\(window.appName) - \(window.title)\": ideal=\(idealFrame.size) actual=\(actualSize) rememberedMain=\(rememberedMainSize.map { "\($0)" } ?? "nil") lastIdeal=\(window.lastIdealSize.map { "\($0)" } ?? "nil") lastIdealLooksLikeCurrentMain=\(lastIdealLooksLikeCurrentMain) resizeFailed=\(window.isResizeFailed)")
+                    } else {
+                        targetFrame = idealFrame
+                        if window.isResizeFailed {
+                            Log.debug(Self.tag, "    MAIN probe \"\(window.appName) - \(window.title)\": MAIN成功サイズ未記憶のため理想サイズを再試行 ideal=\(idealFrame.size) actual=\(actualSize) lastIdeal=\(window.lastIdealSize.map { "\($0)" } ?? "nil")")
+                        }
+                    }
                     role = "MAIN_\(i)"
                 } else {
                     // SIDE ウィンドウ
                     let idealFrame = idealFrames[min(i, idealFrames.count - 1)]
 
-                    // 前回の実際の高さが、前回の理想の高さより大きい場合、それをこのウィンドウの最小高さ制限とみなす
-                    let lastH = window.frame.height
-                    let minH: CGFloat
+                    // リサイズに失敗したウィンドウは、次回以降も通らない理想サイズを投げ続けない。
+                    // Terminal の文字セル単位リサイズや、アプリ固有の最小/最大サイズで位置まで補正されるため、
+                    // 失敗済みの場合は直近の実サイズをこのウィンドウの制約サイズとして扱う。
+                    let actualSize = window.frame.size
+                    let constrainedSize: CGSize
+                    let usesConstrainedSize: Bool
                     if window.isResizeFailed {
-                        minH = idealFrame.height
-                    } else if let lastIdeal = window.lastIdealSize, lastH > lastIdeal.height + 5 {
-                        minH = lastH
+                        constrainedSize = actualSize
+                        usesConstrainedSize = true
                     } else {
-                        minH = idealFrame.height
+                        constrainedSize = idealFrame.size
+                        usesConstrainedSize = false
                     }
 
                     let isLeft: Bool
@@ -715,13 +770,24 @@ final class FocusModeController {
                     // 残り高さの計算
                     let remainingH = (screenAXFrame.minY + screenAXFrame.height - gap.outer) - currentY
 
-                    if remainingH >= minSideWindowHeight && currentY + minSideWindowHeight <= screenAXFrame.minY + screenAXFrame.height - gap.outer {
-                        let targetH = min(minH, remainingH)
+                    let requiredH = max(minSideWindowHeight, constrainedSize.height)
+                    let targetW = max(100, constrainedSize.width)
+                    let canPlace = remainingH >= minSideWindowHeight
+
+                    Log.debug(Self.tag, "    SIDE constraint \"\(window.appName) - \(window.title)\": ideal=\(idealFrame.size) actual=\(actualSize) lastIdeal=\(window.lastIdealSize.map { "\($0)" } ?? "nil") resizeFailed=\(window.isResizeFailed) remainingH=\(remainingH) requiredH=\(requiredH)")
+
+                    if canPlace {
+                        let columnX = isLeft ? (actualLeftX ?? idealFrame.origin.x) : (actualRightX ?? idealFrame.origin.x)
+                        let columnW = isLeft ? (actualLeftW ?? idealFrame.width) : (actualRightW ?? idealFrame.width)
+                        let finalW = usesConstrainedSize ? min(targetW, columnW) : columnW
+                        let finalX = isLeft ? columnX : columnX + max(0, columnW - finalW)
+                        let finalH = min(constrainedSize.height, remainingH)
+
                         targetFrame = CGRect(
-                            x: isLeft ? (actualLeftX ?? idealFrame.origin.x) : (actualRightX ?? idealFrame.origin.x),
+                            x: finalX,
                             y: currentY,
-                            width: isLeft ? (actualLeftW ?? idealFrame.width) : (actualRightW ?? idealFrame.width),
-                            height: targetH
+                            width: finalW,
+                            height: finalH
                         )
                         role = isLeft ? "SIDE_L[\(i)]" : "SIDE_R[\(i)]"
                         if isLeft {
@@ -730,26 +796,133 @@ final class FocusModeController {
                             isRightWindow = true
                         }
                     } else {
-                        // 収まりきらない場合は画面外（十分に離れた左側）に格納
-                        targetFrame = CGRect(
-                            x: -4000,
-                            y: screenAXFrame.minY + CGFloat(i) * 10,
-                            width: 200,
-                            height: 200
-                        )
-                        role = "OFFSCREEN[\(i)]"
+                        Log.info(Self.tag, "    残り領域が最小高さ未満のため配置スキップ: \"\(window.appName) - \(window.title)\" remainingH=\(remainingH) minSideWindowHeight=\(minSideWindowHeight)")
+                        continue
                     }
                 }
 
+                let originalTargetFrame = targetFrame
+                let originalRole = role
+                let idealFrameForLog = idealFrames[min(i, idealFrames.count - 1)]
+                Log.debug(Self.tag, "    placement request role=\(role) isMain=\(isMain) id=\(window.id) cachedFrame=\(window.frame) cachedResizeFailed=\(window.isResizeFailed) cachedLastIdeal=\(window.lastIdealSize.map { "\($0)" } ?? "nil") idealFrame=\(idealFrameForLog) screenAXFrame=\(screenAXFrame)")
                 Log.info(Self.tag, "    \(role) \"\(window.appName) - \(window.title)\" → \(targetFrame)")
-                let success = AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
-                windowManager.setResizeFailed(id: window.id, failed: !success)
+                var success = AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
 
                 // 実際の配置後のフレームを取得して追跡
-                let actualFrame = AccessibilityHelper.getFrame(of: axWindow) ?? targetFrame
+                var actualFrame = AccessibilityHelper.getFrame(of: axWindow) ?? targetFrame
+                let primaryActualFrame = actualFrame
+                Log.debug(Self.tag, "    placement primary result role=\(role) success=\(success) request=\(targetFrame) actual=\(actualFrame)")
+
+                if !success && isMain {
+                    let idealFrame = idealFrames[min(i, idealFrames.count - 1)]
+                    let fallbackW = min(max(100, actualFrame.width), idealFrame.width)
+                    let fallbackH = min(max(100, actualFrame.height), idealFrame.height)
+                    let screenMinX = screenAXFrame.minX + gap.outer
+                    let screenMaxX = screenAXFrame.minX + screenAXFrame.width - gap.outer
+                    let fallbackX = min(max(idealFrame.midX - fallbackW / 2, screenMinX), screenMaxX - fallbackW)
+                    targetFrame = CGRect(
+                        x: fallbackX,
+                        y: idealFrame.minY,
+                        width: fallbackW,
+                        height: fallbackH
+                    )
+                    role = "MAIN_FALLBACK[\(i)]"
+                    Log.info(Self.tag, "    \(role) \"\(window.appName) - \(window.title)\" resize fallback → \(targetFrame) originalRole=\(originalRole) originalTarget=\(originalTargetFrame) actualAfterIdeal=\(actualFrame)")
+                    success = AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
+                    actualFrame = AccessibilityHelper.getFrame(of: axWindow) ?? targetFrame
+                    Log.debug(Self.tag, "    placement main fallback result role=\(role) success=\(success) fallbackRequest=\(targetFrame) actual=\(actualFrame)")
+                }
+
+                if isMain, success {
+                    recordMainAcceptedSize(windowID: window.id, size: actualFrame.size)
+                }
+
+                if !success && (isLeftWindow || isRightWindow) {
+                    let bottomLimit = screenAXFrame.minY + screenAXFrame.height - gap.outer
+                    let topLimit = screenAXFrame.minY + gap.outer
+                    let leftLimit = screenAXFrame.minX + gap.outer
+                    let rightLimit = screenAXFrame.minX + screenAXFrame.width - gap.outer
+                    let availableHeight = bottomLimit - topLimit
+                    let fitTolerance: CGFloat = 12
+                    var shouldApplyFallback = false
+                    let fallbackSize = CGSize(
+                        width: min(max(100, actualFrame.width), rightLimit - leftLimit),
+                        height: min(max(minSideWindowHeight, actualFrame.height), availableHeight)
+                    )
+
+                    if actualFrame.height <= availableHeight + fitTolerance {
+                        let desiredX = isLeftWindow ? targetFrame.minX : targetFrame.maxX - actualFrame.width
+                        let fittedX = min(max(desiredX, leftLimit), rightLimit - actualFrame.width)
+                        let fittedY = min(max(targetFrame.minY, topLimit), bottomLimit - actualFrame.height)
+                        let fittedOrigin = CGPoint(x: fittedX, y: fittedY)
+                        Log.info(Self.tag, "    実サイズを採用して画面内に再配置: \"\(window.appName) - \(window.title)\" actual=\(actualFrame) fittedOrigin=\(fittedOrigin) bounds=(x:\(leftLimit)-\(rightLimit), y:\(topLimit)-\(bottomLimit)) tolerance=\(fitTolerance)")
+                        if abs(actualFrame.minX - fittedOrigin.x) > fitTolerance || abs(actualFrame.minY - fittedOrigin.y) > fitTolerance {
+                            _ = AccessibilityHelper.setPositionOnly(of: axWindow, to: fittedOrigin)
+                            actualFrame = AccessibilityHelper.getFrame(of: axWindow) ?? actualFrame
+                        }
+                        success = true
+                    } else if targetFrame.minY + fallbackSize.height <= bottomLimit {
+                        let desiredX = isLeftWindow ? targetFrame.minX : targetFrame.maxX - fallbackSize.width
+                        let fallbackX = min(max(desiredX, leftLimit), rightLimit - fallbackSize.width)
+                        targetFrame = CGRect(
+                            x: fallbackX,
+                            y: min(max(targetFrame.minY, topLimit), bottomLimit - fallbackSize.height),
+                            width: fallbackSize.width,
+                            height: fallbackSize.height
+                        )
+                        role = isLeftWindow ? "SIDE_L_FALLBACK[\(i)]" : "SIDE_R_FALLBACK[\(i)]"
+                        Log.info(Self.tag, "    \(role) \"\(window.appName) - \(window.title)\" 画面内サイズで再要求 → \(targetFrame) actualAfterPrimary=\(actualFrame)")
+                        shouldApplyFallback = true
+                    } else {
+                        let desiredX = isLeftWindow ? targetFrame.minX : targetFrame.maxX - fallbackSize.width
+                        let fallbackX = min(max(desiredX, leftLimit), rightLimit - fallbackSize.width)
+                        targetFrame = CGRect(
+                            x: fallbackX,
+                            y: topLimit,
+                            width: fallbackSize.width,
+                            height: fallbackSize.height
+                        )
+                        role = isLeftWindow ? "SIDE_L_FALLBACK_CLAMP[\(i)]" : "SIDE_R_FALLBACK_CLAMP[\(i)]"
+                        Log.warn(Self.tag, "    \(role) \"\(window.appName) - \(window.title)\" 実サイズが表示領域より大きいため上端固定で再要求 → \(targetFrame) actualAfterPrimary=\(actualFrame) availableHeight=\(availableHeight)")
+                        shouldApplyFallback = true
+                    }
+
+                    if shouldApplyFallback {
+                        success = AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
+                        actualFrame = AccessibilityHelper.getFrame(of: axWindow) ?? targetFrame
+                        Log.debug(Self.tag, "    placement side fallback result role=\(role) success=\(success) fallbackRequest=\(targetFrame) actual=\(actualFrame)")
+                        if !success {
+                            let finalX = min(max(actualFrame.minX, leftLimit), rightLimit - actualFrame.width)
+                            let finalY = actualFrame.height <= availableHeight + fitTolerance
+                                ? min(max(targetFrame.minY, topLimit), bottomLimit - actualFrame.height)
+                                : topLimit
+                            let finalOrigin = CGPoint(x: finalX, y: finalY)
+                            Log.info(Self.tag, "    fallback後もサイズが丸められたため位置だけ画面内へ補正: \"\(window.appName) - \(window.title)\" from=\(actualFrame.origin) to=\(finalOrigin) actualSize=\(actualFrame.size)")
+                            _ = AccessibilityHelper.setPositionOnly(of: axWindow, to: finalOrigin)
+                            actualFrame = AccessibilityHelper.getFrame(of: axWindow) ?? actualFrame
+                            success = actualFrame.minY >= topLimit - fitTolerance && actualFrame.minY <= bottomLimit + fitTolerance
+                        }
+                    }
+                }
+
+                let resizeFailedAfterUpdate = !success
+                windowManager.setResizeFailed(id: window.id, failed: !success)
+                Log.info(Self.tag, "    placement final role=\(role) id=\(window.id) success=\(success) resizeFailedAfterUpdate=\(resizeFailedAfterUpdate) rememberedMainSize=\(mainAcceptedSizesByWindowID[window.id].map { "\($0)" } ?? "nil") finalActual=\(actualFrame) originalRole=\(originalRole) originalTarget=\(originalTargetFrame)")
 
                 // 配置後のフレームを記録 (実際の配置フレームを使うことで、stale なキャッシュを防ぐ)
                 appliedFrames.append((id: window.id, frame: actualFrame))
+                if isLeftWindow || isRightWindow {
+                    let resistedHeight = abs(primaryActualFrame.height - originalTargetFrame.height) > 12
+                    sidePlacements.append(SidePlacement(
+                        id: window.id,
+                        name: "\(window.appName) - \(window.title)",
+                        axWindow: axWindow,
+                        isLeft: isLeftWindow,
+                        targetFrame: originalTargetFrame,
+                        frame: actualFrame,
+                        resistedHeight: resistedHeight
+                    ))
+                }
 
                 // 今回指定した理想サイズを記録
                 let idealSz = idealFrames[min(i, idealFrames.count - 1)].size
@@ -758,20 +931,20 @@ final class FocusModeController {
                 if i == 0 {
                     // 左側サイドバーの幅決定（通常のメイン、または2分割メインの左側）
                     let leftX = screenAXFrame.minX + gap.outer
-                    let leftMaxX = targetFrame.minX - gap.inner
+                    let leftMaxX = actualFrame.minX - gap.inner
                     actualLeftX = leftX
                     actualLeftW = max(100, leftMaxX - leftX)
                     
                     // splitCentered, absoluteSplit2, absoluteSplit3 以外の場合は、i == 0 の右端が右サイドバーの左端になる
                     if monitorStyle != .splitCentered && monitorStyle != .absoluteSplit2 && monitorStyle != .absoluteSplit3 {
-                        let rightX = targetFrame.maxX + gap.inner
+                        let rightX = actualFrame.maxX + gap.inner
                         let screenMaxX = screenAXFrame.minX + screenAXFrame.width - gap.outer
                         actualRightX = rightX
                         actualRightW = max(100, screenMaxX - rightX)
                     }
                 } else if i == 1 && monitorStyle == .splitCentered {
                     // splitCentered の場合のみ、i == 1（中央メイン右側）の右端が右サイドバーの左端になる
-                    let rightX = targetFrame.maxX + gap.inner
+                    let rightX = actualFrame.maxX + gap.inner
                     let screenMaxX = screenAXFrame.minX + screenAXFrame.width - gap.outer
                     actualRightX = rightX
                     actualRightW = max(100, screenMaxX - rightX)
@@ -790,6 +963,76 @@ final class FocusModeController {
                     Log.debug(Self.tag, "    → focus 予定: \"\(window.appName)\"")
                 }
             }
+
+            func repackSideColumn(_ entries: [SidePlacement], sideName: String) {
+                guard entries.count > 1 else { return }
+
+                let topLimit = screenAXFrame.minY + gap.outer
+                let bottomLimit = screenAXFrame.minY + screenAXFrame.height - gap.outer
+                let leftLimit = screenAXFrame.minX + gap.outer
+                let rightLimit = screenAXFrame.minX + screenAXFrame.width - gap.outer
+                let availableHeight = bottomLimit - topLimit
+                let totalGap = gap.inner * CGFloat(entries.count - 1)
+                let totalHeight = entries.reduce(CGFloat.zero) { $0 + $1.frame.height } + totalGap
+
+                var targetHeights = entries.map(\.frame.height)
+                if totalHeight > availableHeight + 1 {
+                    var overflow = totalHeight - availableHeight
+                    let shrinkableIndexes = entries.indices.filter { !entries[$0].resistedHeight }
+                    let capacity = shrinkableIndexes.reduce(CGFloat.zero) { partial, idx in
+                        partial + max(0, targetHeights[idx] - minSideWindowHeight)
+                    }
+
+                    if capacity > 0 {
+                        for idx in shrinkableIndexes {
+                            let itemCapacity = max(0, targetHeights[idx] - minSideWindowHeight)
+                            guard itemCapacity > 0 else { continue }
+                            let reduction = min(itemCapacity, overflow * (itemCapacity / capacity))
+                            targetHeights[idx] -= reduction
+                        }
+                        let newTotal = targetHeights.reduce(CGFloat.zero, +) + totalGap
+                        overflow = max(0, newTotal - availableHeight)
+                    }
+
+                    Log.info(Self.tag, "    \(sideName) column repack: totalHeight=\(totalHeight) availableHeight=\(availableHeight) remainingOverflow=\(overflow) shrinkable=\(shrinkableIndexes.count)")
+                }
+
+                var currentY = topLimit
+                for (idx, entry) in entries.enumerated() {
+                    let desiredHeight = targetHeights[idx]
+                    let desiredWidth = min(max(100, entry.frame.width), rightLimit - leftLimit)
+                    let desiredX = entry.isLeft ? entry.targetFrame.minX : entry.targetFrame.maxX - desiredWidth
+                    let fittedX = min(max(desiredX, leftLimit), rightLimit - desiredWidth)
+                    let desiredFrame = CGRect(x: fittedX, y: currentY, width: desiredWidth, height: desiredHeight)
+
+                    var didResize = false
+                    if abs(entry.frame.height - desiredHeight) > 8 || abs(entry.frame.width - desiredWidth) > 8 {
+                        Log.info(Self.tag, "    \(sideName) column repack resize: \"\(entry.name)\" from=\(entry.frame) to=\(desiredFrame)")
+                        _ = AccessibilityHelper.moveAndResize(window: entry.axWindow, to: desiredFrame.origin, size: desiredFrame.size)
+                        didResize = true
+                    } else if abs(entry.frame.minX - desiredFrame.minX) > 8 || abs(entry.frame.minY - desiredFrame.minY) > 8 {
+                        Log.info(Self.tag, "    \(sideName) column repack position: \"\(entry.name)\" from=\(entry.frame.origin) to=\(desiredFrame.origin) size=\(entry.frame.size)")
+                        _ = AccessibilityHelper.setPositionOnly(of: entry.axWindow, to: desiredFrame.origin)
+                    }
+
+                    var actual = AccessibilityHelper.getFrame(of: entry.axWindow) ?? desiredFrame
+                    let finalY = actual.height <= availableHeight
+                        ? min(max(currentY, topLimit), bottomLimit - actual.height)
+                        : topLimit
+                    let finalX = min(max(fittedX, leftLimit), rightLimit - actual.width)
+                    if abs(actual.minX - finalX) > 8 || abs(actual.minY - finalY) > 8 {
+                        Log.info(Self.tag, "    \(sideName) column repack final position: \"\(entry.name)\" from=\(actual.origin) to=(\(finalX), \(finalY)) actualSize=\(actual.size) didResize=\(didResize)")
+                        _ = AccessibilityHelper.setPositionOnly(of: entry.axWindow, to: CGPoint(x: finalX, y: finalY))
+                        actual = AccessibilityHelper.getFrame(of: entry.axWindow) ?? actual
+                    }
+
+                    appliedFrames.append((id: entry.id, frame: actual))
+                    currentY = actual.minY + actual.height + gap.inner
+                }
+            }
+
+            repackSideColumn(sidePlacements.filter(\.isLeft), sideName: "LEFT")
+            repackSideColumn(sidePlacements.filter { !$0.isLeft }, sideName: "RIGHT")
         }
 
         // ManagedWindow.frame を配置後の値で更新
@@ -804,16 +1047,12 @@ final class FocusModeController {
             AccessibilityHelper.focus(window: axWindowToFocus)
         }
 
-        // レイアウト計算と命令送信自体は終わったので、フォーカス追従などのロックはすぐに解除する
-        self.isApplyingLayout = false
-        
-        // OSのウィンドウ移動アニメーション（最大で1秒以上かかることがある）を完全に吸収するため、十分な時間(1.5秒)遅らせてから無視フラグを解除する
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            guard let self else { return }
-            self.windowManager?.syncActualFrames() // 物理的な配置完了後のリアル座標で最終同期！
-            self.windowManager?.setTilingInProgress(false)
-            DimmingManager.shared.updateFocusedWindowRect()
-            Log.debug(Self.tag, "setTilingInProgress(false) 完了 (アニメーション吸収完了)")
+        var intendedFramesByID: [String: CGRect] = [:]
+        for entry in appliedFrames {
+            intendedFramesByID[entry.id] = entry.frame
+        }
+        windowManager.finishTilingInProgressAfterWindowSettles { [weak self] in
+            self?.verifyPostSettleFrames(intendedFramesByID)
         }
 
         Log.info(Self.tag, "applyLayout() 完了")
@@ -821,7 +1060,60 @@ final class FocusModeController {
 
     // MARK: - Private
 
+    private func verifyPostSettleFrames(_ intendedFramesByID: [String: CGRect]) {
+        guard let windowManager else { return }
+        guard windowManager.currentMode == .focus else { return }
+        guard !intendedFramesByID.isEmpty else { return }
+
+        let repairThreshold: CGFloat = 18
+        var driftLogs: [String] = []
+
+        for window in windowManager.managedWindows {
+            guard let intended = intendedFramesByID[window.id] else { continue }
+            let actual = window.frame
+            let dx = abs(actual.minX - intended.minX)
+            let dy = abs(actual.minY - intended.minY)
+            let dw = abs(actual.width - intended.width)
+            let dh = abs(actual.height - intended.height)
+            let maxDiff = max(dx, dy, dw, dh)
+            if maxDiff > repairThreshold {
+                driftLogs.append(
+                    "\"\(window.appName) - \(window.title)\" diff=(x:\(dx), y:\(dy), w:\(dw), h:\(dh)) intended=\(intended) actual=\(actual)"
+                )
+            }
+        }
+
+        guard !driftLogs.isEmpty else {
+            if isPostSettleRepairing {
+                Log.info(Self.tag, "post-settle repair 完了: 追加ドリフトなし")
+                isPostSettleRepairing = false
+            }
+            return
+        }
+
+        Log.warn(Self.tag, "settle後ドリフト検出: \(driftLogs.joined(separator: " / "))")
+        guard !isPostSettleRepairing else {
+            Log.warn(Self.tag, "post-settle repair 後もドリフトが残っています。無限再配置を避けるため追加再試行は行いません")
+            isPostSettleRepairing = false
+            return
+        }
+
+        Log.info(Self.tag, "settle後ドリフトを補正するため、1回だけ再配置します")
+        isPostSettleRepairing = true
+        applyLayout()
+    }
+
     private func screenIndex(for axFrame: CGRect, in screens: [NSScreen]) -> Int {
+        screenPlacement(for: axFrame, in: screens).index
+    }
+
+    private func recordMainAcceptedSize(windowID: String, size: CGSize) {
+        guard size.width >= 100, size.height >= 100 else { return }
+        mainAcceptedSizesByWindowID[windowID] = size
+        Log.debug(Self.tag, "    MAIN accepted size 記憶: id=\(windowID) size=\(size)")
+    }
+
+    private func screenPlacement(for axFrame: CGRect, in screens: [NSScreen]) -> (index: Int, visibleRatio: CGFloat) {
         let appKitFrame = screenManager.axToAppKit(axFrame)
         var bestIndex = 0
         var bestArea: CGFloat = -1
@@ -831,6 +1123,9 @@ final class FocusModeController {
                 ? intersection.width * intersection.height : 0
             if area > bestArea { bestArea = area; bestIndex = i }
         }
+
+        let windowArea = max(1, appKitFrame.width * appKitFrame.height)
+        let visibleRatio = max(0, bestArea) / windowArea
 
         // どのスクリーンとも交差しない場合（画面外に退避されている場合など）
         if bestArea <= 0 {
@@ -846,6 +1141,6 @@ final class FocusModeController {
             }
         }
 
-        return bestIndex
+        return (bestIndex, visibleRatio)
     }
 }

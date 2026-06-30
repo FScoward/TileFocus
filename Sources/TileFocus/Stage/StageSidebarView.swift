@@ -190,7 +190,9 @@ final class StageTopBarController: NSObject {
             let maxActiveRows = max(split.left.count, max(split.main.count, split.right.count))
             
             // 各行 30px + 行間 6px、ヘッダーパディングなど
-            let activeHeight = CGFloat(maxActiveRows * 30 + max(0, maxActiveRows - 1) * 6 + 32)
+            let activeRowHeight = maxActiveRows * 30
+            let activeGapHeight = max(0, maxActiveRows - 1) * 6
+            let activeHeight = CGFloat(activeRowHeight + activeGapHeight + 32)
             
             // stagedCount がある場合は、Divider + ラベル + グリッド高さを加算
             let stagedHeight: CGFloat
@@ -869,7 +871,11 @@ struct StageTopBarView: View {
                     let deltaCol = Int(round(value.translation.width / colWidth))
                     let deltaRow = Int(round(value.translation.height / rowHeight))
                     
-                    let targetCol = max(0, min(2, dragStartCol + deltaCol))
+                    let focusStyle = windowManager.focusStyle(for: screen)
+                    var targetCol = max(0, min(2, dragStartCol + deltaCol))
+                    if focusStyle == .absoluteSplit2 && targetCol == 1 {
+                        targetCol = dragStartCol
+                    }
                     let targetRow = max(0, dragStartRow + deltaRow)
                     
                     let split = splitTempWindows
@@ -881,12 +887,12 @@ struct StageTopBarView: View {
                     default: colCount = 0
                     }
                     
-                    let maxRow: Int
-                    if targetCol == dragStartCol {
-                        maxRow = max(0, colCount - 1)
-                    } else {
-                        maxRow = colCount
-                    }
+                    let maxRow = maxDropRow(
+                        forColumn: targetCol,
+                        focusStyle: focusStyle,
+                        columnCount: colCount,
+                        isSameColumn: targetCol == dragStartCol
+                    )
                     let finalTargetRow = min(maxRow, targetRow)
                     
                     if targetCol != dragTargetCol || finalTargetRow != dragTargetRow {
@@ -920,19 +926,21 @@ struct StageTopBarView: View {
                         default: return
                         }
                         
-                        let newActive = split.left + split.main + split.right
+                        let focusStyle = windowManager.focusStyle(for: screen)
+                        let movesToMain = dragTargetCol == 1
+                        let nextFocusedID = movesToMain ? movingWindow.id : windowManager.focusedWindowID
+                        let nextMasterID = movesToMain ? movingWindow.id : windowManager.masterWindow?.id
+                        let newActive = linearizedWindowOrder(
+                            from: split,
+                            focusStyle: focusStyle,
+                            preferredMasterID: nextMasterID
+                        )
                         let staged = tempWindows.filter { win in
                             windowManager.stagedWindows.contains(where: { $0.id == win.id })
                         }
                         
                         withAnimation(.easeInOut(duration: 0.2)) {
                             tempWindows = newActive + staged
-                        }
-                        
-                        if let newMaster = split.main.first {
-                            windowManager.switchFocusedWindow(to: newMaster.id)
-                        } else if let newMaster = newActive.first {
-                            windowManager.switchFocusedWindow(to: newMaster.id)
                         }
                         
                         let targetIDs = Set(newActive.map { $0.id })
@@ -944,7 +952,11 @@ struct StageTopBarView: View {
                         let newOrderForThisScreen = newActive.map { $0.id }
                         currentOrder.insert(contentsOf: newOrderForThisScreen, at: insertIndex)
                         
-                        windowManager.customWindowOrder = currentOrder
+                        windowManager.updateLayoutState(
+                            customWindowOrder: currentOrder,
+                            focusedWindowID: nextFocusedID,
+                            masterWindowID: nextMasterID
+                        )
                     }
                     
                     draggingWindowID = nil
@@ -1302,6 +1314,86 @@ func getWindowsForScreen(screen: NSScreen, windowManager: WindowManager) -> (act
     return (active: sortedActive, staged: sortedStaged)
 }
 
+func maxDropRow(forColumn column: Int, focusStyle: FocusStyle, columnCount: Int, isSameColumn: Bool) -> Int {
+    let insertLimit = isSameColumn ? max(0, columnCount - 1) : columnCount
+
+    switch focusStyle {
+    case .centered, .leftMain, .rightMain, .absoluteSplit3:
+        return column == 1 ? 0 : insertLimit
+    case .splitCentered:
+        return column == 1 ? min(insertLimit, 1) : insertLimit
+    case .absoluteSplit2:
+        return column == 1 ? 0 : insertLimit
+    }
+}
+
+func linearizedWindowOrder(from split: SplitWindows, focusStyle: FocusStyle, preferredMasterID: String?) -> [ManagedWindow] {
+    func interleave(_ first: [ManagedWindow], _ second: [ManagedWindow]) -> [ManagedWindow] {
+        var result: [ManagedWindow] = []
+        let maxCount = max(first.count, second.count)
+        for index in 0..<maxCount {
+            if index < first.count {
+                result.append(first[index])
+            }
+            if index < second.count {
+                result.append(second[index])
+            }
+        }
+        return result
+    }
+
+    let allWindows = split.main + split.left + split.right
+    func preferredMaster(fallback: ManagedWindow?) -> ManagedWindow? {
+        if let preferredMasterID,
+           let match = allWindows.first(where: { $0.id == preferredMasterID }) {
+            return match
+        }
+        return fallback ?? allWindows.first
+    }
+
+    switch focusStyle {
+    case .centered:
+        guard let master = preferredMaster(fallback: split.main.first) else {
+            return interleave(split.left, split.right)
+        }
+        let extraMain = split.main.filter { $0.id != master.id }
+        return [master] + interleave(extraMain + split.left, split.right)
+
+    case .splitCentered:
+        guard let master = preferredMaster(fallback: split.main.first) else {
+            return interleave(split.left, split.right)
+        }
+        let remainingMain = split.main.filter { $0.id != master.id }
+        let secondMain = remainingMain.first.map { [$0] } ?? []
+        let overflowMain = Array(remainingMain.dropFirst())
+        return [master] + secondMain + interleave(overflowMain + split.left, split.right)
+
+    case .leftMain:
+        guard let master = preferredMaster(fallback: split.main.first) else {
+            return split.right + split.left
+        }
+        let extraMain = split.main.filter { $0.id != master.id }
+        return [master] + extraMain + split.right + split.left
+
+    case .rightMain:
+        guard let master = preferredMaster(fallback: split.main.first) else {
+            return split.left + split.right
+        }
+        let extraMain = split.main.filter { $0.id != master.id }
+        return [master] + extraMain + split.left + split.right
+
+    case .absoluteSplit2:
+        return split.left + split.right + split.main
+
+    case .absoluteSplit3:
+        guard let master = preferredMaster(fallback: split.main.first) else {
+            return split.left + split.right
+        }
+        let extraMain = split.main.filter { $0.id != master.id }
+        return [master] + split.left + split.right + extraMain
+    }
+}
+
 @MainActor
 func getSplitWindows(activeWins: [ManagedWindow], focusStyle: FocusStyle, masterWindowID: String?) -> SplitWindows {
     var left: [ManagedWindow] = []
@@ -1376,7 +1468,3 @@ func getSplitWindows(activeWins: [ManagedWindow], focusStyle: FocusStyle, master
     
     return SplitWindows(left: left, main: main, right: right)
 }
-
-
-
-

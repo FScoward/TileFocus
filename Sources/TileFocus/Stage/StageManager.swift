@@ -2,16 +2,13 @@ import Foundation
 import AppKit
 
 /// 格納ウィンドウの管理クラス
-/// ウィンドウを画面外に移動して「格納」し、リストで管理する
+/// ウィンドウを Dock にしまって「格納」し、リストで管理する
 final class StageManager {
 
     // MARK: - State
 
     /// 格納中のウィンドウリスト
     private var staged: [ManagedWindow] = []
-
-    /// 格納位置: 画面左端外側（十分に離す）
-    private let stagingX: CGFloat = -4000
 
     // MARK: - Stage / Unstage
 
@@ -31,16 +28,12 @@ final class StageManager {
             windowManager.setTilingInProgress(true)
             switch method {
             case .offscreen:
-                let hiddenPosition = CGPoint(x: stagingX, y: window.frame.origin.y)
-                AccessibilityHelper.moveAndResize(
-                    window: axWindow,
-                    to: hiddenPosition,
-                    size: window.frame.size
-                )
+                Log.warn("StageManager", "stageMethod=offscreen は非推奨のため Dock 格納にフォールバックします")
+                AccessibilityHelper.minimize(window: axWindow)
             case .dock:
                 AccessibilityHelper.minimize(window: axWindow)
             }
-            windowManager.setTilingInProgress(false)
+            windowManager.finishTilingInProgressAfterWindowSettles()
         }
 
         // 管理リストから除去、格納リストへ追加
@@ -90,7 +83,7 @@ final class StageManager {
                 // OS側で復帰した後に確実にサイズと位置を合わせる
                 AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
             }
-            windowManager.setTilingInProgress(false)
+            windowManager.finishTilingInProgressAfterWindowSettles()
             AccessibilityHelper.focus(window: axWindow)
         }
 
