@@ -180,27 +180,25 @@ enum AccessibilityHelper {
         let title = getTitle(of: window) ?? "?"
         var pid: pid_t = 0
         AXUIElementGetPid(window, &pid)
-        
         let beforeFrameForLog = getFrame(of: window) ?? .zero
         
-        // --- 究極の強制移動ロジック（画面外はみ出しブロック回避） ---
+        let isExpanding = size.width > beforeFrameForLog.width || size.height > beforeFrameForLog.height
         
-        // 1. 絶対に画面外にはみ出さない安全な極小サイズに縮小
-        let safeSize = CGSize(width: 100, height: 100)
-        setSize(of: window, to: safeSize)
+        // パス1：OSのアニメーションキャンセルの隙を与えないため、待機なしで連続実行
+        if isExpanding {
+            setPosition(of: window, to: position)
+            setSize(of: window, to: size)
+        } else {
+            setSize(of: window, to: size)
+            setPosition(of: window, to: position)
+        }
         
-        // 2. 目標座標へ移動（サイズが小さいためOSの制約に引っかからず確実に行ける）
-        setPosition(of: window, to: position)
-        
-        // 3. 目的のサイズに展開
-        let success = setSize(of: window, to: size)
-        
-        // 4. OSのアニメーションや微小な補正が終わるのを待つ
+        // OSがウィンドウのフレーム（タイトルバー等）を補正し終えるのを待つ
         usleep(50000) // 50ms
         
-        // 5. ピクセルズレ矯正のためのダメ押し上書き（1回だけ）
+        // パス2：OSによって微小にずらされた座標を上書き矯正する（ここも待機なし）
         setPosition(of: window, to: position)
-        setSize(of: window, to: size)
+        let success = setSize(of: window, to: size)
         
         let afterFrame = getFrame(of: window)
         var actualSuccess = success
@@ -217,7 +215,7 @@ enum AccessibilityHelper {
             }
         }
         
-        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(actualSuccess) isExpanding=false → pos=\(position) size=\(size) (beforeFrame=\(beforeFrameForLog) afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
+        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(actualSuccess) isExpanding=\(isExpanding) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrameForLog) afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
         return actualSuccess
     }
 
