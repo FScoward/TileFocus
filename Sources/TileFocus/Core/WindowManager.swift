@@ -572,30 +572,31 @@ final class WindowManager: ObservableObject {
         Log.debug("WindowManager", "restoreMasterWindowIDForActiveSpace: key=\(key) savedMasterID=\(masterWindowIDsBySpace[key] ?? "nil")")
         
         if let savedMasterID = masterWindowIDsBySpace[key] {
-            // 保存されていたマスターウィンドウが、現在のウィンドウリスト（managedWindows または stagedWindows）に実在するかチェック
-            let all = managedWindows + stagedWindows
-            if all.contains(where: { $0.id == savedMasterID }) {
-                // 実在する場合はそれを適用
-                if masterWindowID != savedMasterID {
-                    Log.info("WindowManager", "アクティブスペースのマスターウィンドウIDを復元: \(savedMasterID)")
-                    masterWindowID = savedMasterID
-                }
-                // フォーカスウィンドウも復元されたマスターに合わせることで、切り替え後の初期イベントによる誤上書きを防ぐ
-                if focusedWindowID != savedMasterID {
-                    Log.info("WindowManager", "フォーカスウィンドウも復元されたマスターに合わせます: \(savedMasterID)")
-                    focusedWindowID = savedMasterID
-                }
-                return
+            // 保存されていたマスターウィンドウIDをそのまま復元する。
+            // 注意: ここでウィンドウリスト（managedWindows / stagedWindows）に実在するかチェックしてはならない。
+            // スペース移動直後はウィンドウリストが遅延更新されるため、まだ新しいスペースのウィンドウが
+            // リストに反映されていない場合がある。その状態で「見つからない」と判定すると、
+            // フォールバックロジックが走り、勝手に別のウィンドウがマスターに割り当てられてしまう。
+            if masterWindowID != savedMasterID {
+                Log.info("WindowManager", "アクティブスペースのマスターウィンドウIDを復元: \(savedMasterID)")
+                masterWindowID = savedMasterID
             }
+            // フォーカスウィンドウも復元されたマスターに合わせることで、切り替え後の初期イベントによる誤上書きを防ぐ
+            if focusedWindowID != savedMasterID {
+                Log.info("WindowManager", "フォーカスウィンドウも復元されたマスターに合わせます: \(savedMasterID)")
+                focusedWindowID = savedMasterID
+            }
+            return
         }
         
-        // Float Mode では、保存されたマスターが無い場合は nil にし、自動的なマスター割り当て（フォーカスウィンドウのマスター化）は行わない
+        // 以下は、そもそもこのスペースに対して保存されたマスターが存在しない場合のみ到達する
+        
+        // Float Mode では自動的なマスター割り当て（フォーカスウィンドウのマスター化）は行わない
         if currentMode == .float {
             masterWindowID = nil
             return
         }
         
-        // 保存されたマスターが存在しない、または無効な場合：
         // clickOnly 設定時のみ、自動的に現在フォーカスされているウィンドウ等をマスター候補とする
         let trigger = AppSettings.shared.crownSwapTrigger
         if trigger == .clickOnly {

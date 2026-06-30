@@ -188,14 +188,18 @@ enum AccessibilityHelper {
         // 1回目の適用：OSの画面外クリッピング制約を回避するため、拡大/縮小に応じて順番を変える
         if isExpanding {
             setPosition(of: window, to: position)
+            usleep(50000) // 50ms: OSがposition設定を処理する猶予
             setSize(of: window, to: size)
         } else {
             setSize(of: window, to: size)
+            usleep(50000) // 50ms: OSがsize設定を処理する猶予
             setPosition(of: window, to: position)
         }
         
         // 2回目の適用：1回目のサイズ変更や移動によってOSが勝手に微調整（タイトルバー分のズレなど）した座標を上書き矯正する
+        usleep(50000) // 50ms: 1回目の完了を待つ
         setPosition(of: window, to: position)
+        usleep(50000) // 50ms: position設定の完了を待つ
         let success = setSize(of: window, to: size)
         
         let afterFrame = getFrame(of: window)
