@@ -187,8 +187,7 @@ final class DimmingWindow: NSPanel {
             contentRect: contentRect,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
-            defer: false,
-            screen: screen
+            defer: false
         )
         
         self.level = .floating
