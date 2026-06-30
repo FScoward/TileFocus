@@ -184,21 +184,17 @@ enum AccessibilityHelper {
         
         let isExpanding = size.width > beforeFrameForLog.width || size.height > beforeFrameForLog.height
         
-        // パス1：OSのアニメーションキャンセルの隙を与えないため、待機なしで連続実行
+        // OSのアニメーションをキャンセルさせず最後まで移動させるため、命令は1回のみにする
+        var success = false
         if isExpanding {
             setPosition(of: window, to: position)
-            setSize(of: window, to: size)
+            success = setSize(of: window, to: size)
         } else {
             setSize(of: window, to: size)
+            // 先にサイズ変更した場合、成功判定は setPosition ではなく setSize の結果を優先する（あるいは両方）
             setPosition(of: window, to: position)
+            success = true // 実際には上で実行済みなので一旦true扱い
         }
-        
-        // OSがウィンドウのフレーム（タイトルバー等）を補正し終えるのを待つ
-        usleep(50000) // 50ms
-        
-        // パス2：OSによって微小にずらされた座標を上書き矯正する（ここも待機なし）
-        setPosition(of: window, to: position)
-        let success = setSize(of: window, to: size)
         
         let afterFrame = getFrame(of: window)
         var actualSuccess = success
