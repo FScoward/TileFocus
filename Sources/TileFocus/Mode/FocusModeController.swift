@@ -279,11 +279,18 @@ final class FocusModeController {
     func handleMouseClick(event: NSEvent, at mouseLocation: NSPoint) {
         let flags = event.modifierFlags
         let isCtrlShiftPressed = flags.contains(.control) && flags.contains(.shift)
-        guard isCtrlShiftPressed else { return }
+        
+        let trigger = AppSettings.shared.crownSwapTrigger
+        
+        // ctrlShiftClick または clickOnly の場合のみクリックを処理
+        guard isCtrlShiftPressed || trigger == .clickOnly else { return }
+
+        // もし設定が ctrlShiftClick なのに、修飾キーが押されていなければ無視
+        if trigger == .ctrlShiftClick && !isCtrlShiftPressed { return }
 
         let axPoint = screenManager.appKitToAX(mouseLocation)
         
-        Log.info(Self.tag, "handleMouseClick: Control+Shiftクリック検知 mouseLocation=\(mouseLocation), axPoint=\(axPoint)")
+        Log.info(Self.tag, "handleMouseClick: クリック検知 mouseLocation=\(mouseLocation), axPoint=\(axPoint)")
         
         guard let axWindow = AccessibilityHelper.getWindow(at: axPoint) else {
             Log.debug(Self.tag, "  マウス位置にウィンドウ要素が見つかりません")
@@ -327,16 +334,6 @@ final class FocusModeController {
         windowManager?.updateFocusedWindowID(id)
         if let id {
             updateFocusHistory(with: id)
-            guard let windowManager, windowManager.currentMode != .tiling else { return }
-            
-            let trigger = AppSettings.shared.crownSwapTrigger
-            if trigger == .clickOnly {
-                if masterWindowID != id {
-                    Log.info(Self.tag, "[setFocusedWindowID] clickOnly設定によりマスターを自動変更: \(id)")
-                    setMasterWindowID(id)
-                    applyLayout()
-                }
-            }
         }
     }
 
