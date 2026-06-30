@@ -182,53 +182,42 @@ enum AccessibilityHelper {
         AXUIElementGetPid(window, &pid)
         
         let beforeFrameForLog = getFrame(of: window) ?? .zero
-        var actualSuccess = false
-        var lastIsExpanding = false
         
-        // 最大5回のリトライループで、OSのアニメーションや制約による中断を押し切る
-        for _ in 0..<5 {
-            let currentFrame = getFrame(of: window) ?? .zero
-            let isExpanding = size.width > currentFrame.width || size.height > currentFrame.height
-            lastIsExpanding = isExpanding
-            
-            // setPosition と setSize の間には待機時間を入れない（アニメーション中のキャンセルを防ぐため）
-            if isExpanding {
-                setPosition(of: window, to: position)
-                setSize(of: window, to: size)
-            } else {
-                setSize(of: window, to: size)
-                setPosition(of: window, to: position)
-            }
-            
-            // OSの非同期処理とアニメーションが少し進むのを待つ
-            usleep(20000) // 20ms
-            
-            // 適用後の実際のフレームを取得して目標と比較
-            let afterFrame = getFrame(of: window) ?? .zero
-            let widthDiff = abs(afterFrame.width - size.width)
-            let heightDiff = abs(afterFrame.height - size.height)
-            let xDiff = abs(afterFrame.origin.x - position.x)
-            let yDiff = abs(afterFrame.origin.y - position.y)
-            
-            // 許容誤差(2px)以内に収まっていれば成功とみなしてループを抜ける
-            if widthDiff <= 2 && heightDiff <= 2 && xDiff <= 2 && yDiff <= 2 {
-                actualSuccess = true
-                break
-            }
-        }
+        // --- 究極の強制移動ロジック（画面外はみ出しブロック回避） ---
+        
+        // 1. 絶対に画面外にはみ出さない安全な極小サイズに縮小
+        let safeSize = CGSize(width: 100, height: 100)
+        setSize(of: window, to: safeSize)
+        
+        // 2. 目標座標へ移動（サイズが小さいためOSの制約に引っかからず確実に行ける）
+        setPosition(of: window, to: position)
+        
+        // 3. 目的のサイズに展開
+        let success = setSize(of: window, to: size)
+        
+        // 4. OSのアニメーションや微小な補正が終わるのを待つ
+        usleep(50000) // 50ms
+        
+        // 5. ピクセルズレ矯正のためのダメ押し上書き（1回だけ）
+        setPosition(of: window, to: position)
+        setSize(of: window, to: size)
         
         let afterFrame = getFrame(of: window)
+        var actualSuccess = success
         
-        // アプリケーション固有の最小サイズ制限等でどうしてもサイズが合わない場合の警告
-        if !actualSuccess, let after = afterFrame {
+        // アプリケーション固有の最小サイズ制限等でどうしてもサイズが合わない場合の警告と判定
+        if let after = afterFrame {
             let widthDiff = abs(after.width - size.width)
             let heightDiff = abs(after.height - size.height)
             if widthDiff > 10 || heightDiff > 10 {
                 Log.warn(tag, "  ⚠️ リサイズ要求サイズと実際のサイズが一致しません（最小サイズ制限の可能性）: 要求=\(size) 実際=\(after.size) (差: w=\(widthDiff) h=\(heightDiff))")
+                actualSuccess = false
+            } else {
+                actualSuccess = true
             }
         }
         
-        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(actualSuccess) isExpanding=\(lastIsExpanding) → pos=\(position) size=\(size) (beforeFrame=\(beforeFrameForLog) afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
+        Log.debug(tag, "moveAndResize pid=\(pid) \"\(title)\" success=\(actualSuccess) isExpanding=false → pos=\(position) size=\(size) (beforeFrame=\(beforeFrameForLog) afterFrame=\(afterFrame.map { "\($0)" } ?? "nil"))")
         return actualSuccess
     }
 
