@@ -188,6 +188,11 @@ final class WindowManager: ObservableObject {
                 Log.info("WindowManager", "仮想デスクトップの切り替えを検知しました。ウィンドウリストを再構成します。")
                 self.refreshWindowList()
                 self.triggerLayoutUpdate()
+                
+                // レイアウト更新の指示が飛んでから、実際に適用されるまでの間もガードを維持するため、少し遅らせて false に戻す
+                try? await Task.sleep(nanoseconds: 200_000_000) // 0.2秒待機
+                self.isSpaceSwitching = false
+                Log.info("WindowManager", "仮想スペース切り替えガードを解除しました。")
             }
         }
         self.workspaceObservers = [spaceToken]
@@ -526,7 +531,6 @@ final class WindowManager: ObservableObject {
         
         // 仮想スペース切り替え時やウィンドウリスト更新時に、現在のスペース用のマスターウィンドウIDを復帰させる
         restoreMasterWindowIDForActiveSpace()
-        isSpaceSwitching = false
 
         print("[WindowManager] ウィンドウリスト更新: \(windows.count) 件 (front=\(frontPid.map(String.init) ?? "none"))")
         for (i, w) in windows.enumerated() {
@@ -565,6 +569,11 @@ final class WindowManager: ObservableObject {
                 if masterWindowID != savedMasterID {
                     Log.info("WindowManager", "アクティブスペースのマスターウィンドウIDを復元: \(savedMasterID)")
                     masterWindowID = savedMasterID
+                }
+                // フォーカスウィンドウも復元されたマスターに合わせることで、切り替え後の初期イベントによる誤上書きを防ぐ
+                if focusedWindowID != savedMasterID {
+                    Log.info("WindowManager", "フォーカスウィンドウも復元されたマスターに合わせます: \(savedMasterID)")
+                    focusedWindowID = savedMasterID
                 }
                 return
             }

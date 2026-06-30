@@ -23,7 +23,7 @@ struct TilingGap {
 /// ```
 struct CenterLayout: Layout {
     var name: String { "Center" }
-    var gap: TilingGap = .default
+    var gap: TilingGap { AppSettings.shared.tilingGap }
 
     func calculateFrames(windowCount: Int, screenFrame: CGRect) -> [CGRect] {
         guard windowCount > 0 else { return [] }
@@ -48,7 +48,7 @@ struct CenterLayout: Layout {
 /// ```
 struct HalfSplitLayout: Layout {
     var name: String { "HalfSplit" }
-    var gap: TilingGap = .default
+    var gap: TilingGap { AppSettings.shared.tilingGap }
 
     func calculateFrames(windowCount: Int, screenFrame: CGRect) -> [CGRect] {
         guard windowCount > 0 else { return [] }
@@ -82,7 +82,7 @@ struct HalfSplitLayout: Layout {
 /// ```
 struct VerticalSplitLayout: Layout {
     var name: String { "VerticalSplit" }
-    var gap: TilingGap = .default
+    var gap: TilingGap { AppSettings.shared.tilingGap }
 
     func calculateFrames(windowCount: Int, screenFrame: CGRect) -> [CGRect] {
         guard windowCount > 0 else { return [] }
@@ -115,7 +115,7 @@ struct VerticalSplitLayout: Layout {
 /// ```
 struct MasterStackLayout: Layout {
     var name: String { "MasterStack" }
-    var gap: TilingGap = .default
+    var gap: TilingGap { AppSettings.shared.tilingGap }
     /// マスターウィンドウの幅比率
     var masterRatio: CGFloat = 0.6
 
@@ -158,7 +158,7 @@ struct MasterStackLayout: Layout {
 /// ```
 struct EqualGridLayout: Layout {
     var name: String { "EqualGrid" }
-    var gap: TilingGap = .default
+    var gap: TilingGap { AppSettings.shared.tilingGap }
 
     func calculateFrames(windowCount: Int, screenFrame: CGRect) -> [CGRect] {
         guard windowCount > 0 else { return [] }

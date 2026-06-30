@@ -135,6 +135,11 @@ private struct GeneralSettingsTab: View {
 private struct TilingSettingsTab: View {
     @StateObject private var settings = AppSettings.shared
 
+    private func triggerLayoutUpdate() {
+        WindowManager.shared.requestRetile()
+        WindowManager.shared.requestFocusLayoutUpdate()
+    }
+
     var body: some View {
         Form {
             Section("レイアウト") {
@@ -151,6 +156,9 @@ private struct TilingSettingsTab: View {
                     Spacer()
                     Slider(value: $settings.tilingGapOuter, in: 0...40, step: 2)
                         .frame(width: 150)
+                        .onChange(of: settings.tilingGapOuter) { _ in
+                            triggerLayoutUpdate()
+                        }
                     Text("\(Int(settings.tilingGapOuter)) px")
                         .monospacedDigit()
                         .frame(width: 45, alignment: .trailing)
@@ -161,6 +169,9 @@ private struct TilingSettingsTab: View {
                     Spacer()
                     Slider(value: $settings.tilingGapInner, in: 0...40, step: 2)
                         .frame(width: 150)
+                        .onChange(of: settings.tilingGapInner) { _ in
+                            triggerLayoutUpdate()
+                        }
                     Text("\(Int(settings.tilingGapInner)) px")
                         .monospacedDigit()
                         .frame(width: 45, alignment: .trailing)

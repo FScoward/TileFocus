@@ -14,7 +14,7 @@ import Foundation
 /// ```
 struct FocusLayout: Layout {
     var name: String { "Focus" }
-    var gap: TilingGap = TilingGap(outer: 8, inner: 6)
+    var gap: TilingGap { AppSettings.shared.tilingGap }
 
     /// メインウィンドウの幅比率（全体の何 %）
     var mainWidthRatio: CGFloat {
