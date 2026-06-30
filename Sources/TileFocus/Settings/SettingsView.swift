@@ -90,6 +90,14 @@ private struct GeneralSettingsTab: View {
                 }
             }
 
+            Section("レイアウト (Tiling Mode)") {
+                Picker("デフォルトレイアウト", selection: $settings.defaultLayoutIndex) {
+                    ForEach(LayoutRegistry.allLayouts.indices, id: \.self) { index in
+                        Text(LayoutRegistry.allLayouts[index].name).tag(index)
+                    }
+                }
+            }
+
             Section("レイアウト (Float Mode)") {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
@@ -146,14 +154,6 @@ private struct TilingSettingsTab: View {
 
     var body: some View {
         Form {
-            Section("レイアウト") {
-                Picker("デフォルトレイアウト", selection: $settings.defaultLayoutIndex) {
-                    ForEach(LayoutRegistry.allLayouts.indices, id: \.self) { index in
-                        Text(LayoutRegistry.allLayouts[index].name).tag(index)
-                    }
-                }
-            }
-
             Section("パディング（余白）") {
                 HStack {
                     Text("画面端とのパディング (外側)")
