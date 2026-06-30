@@ -33,11 +33,15 @@ final class WindowManager: ObservableObject {
         didSet {
             if let activeScreen = getActiveScreen() {
                 let key = AccessibilityHelper.getActiveSpaceUUID(for: activeScreen) ?? activeScreen.identifier
-                if let masterWindowID {
-                    masterWindowIDsBySpace[key] = masterWindowID
-                    Log.debug("WindowManager", "masterWindowID didSet: space=\(key) masterWindowID=\(masterWindowID)")
+                if !key.isEmpty {
+                    if let masterWindowID {
+                        masterWindowIDsBySpace[key] = masterWindowID
+                        Log.debug("WindowManager", "masterWindowID didSet: space=\(key) masterWindowID=\(masterWindowID)")
+                    } else {
+                        masterWindowIDsBySpace.removeValue(forKey: key)
+                    }
                 } else {
-                    masterWindowIDsBySpace.removeValue(forKey: key)
+                    Log.warn("WindowManager", "masterWindowID didSet: key が空のため保存をスキップしました")
                 }
             }
         }
@@ -64,7 +68,7 @@ final class WindowManager: ObservableObject {
 
     /// 指定されたスクリーンの現在アクティブな仮想スペースに対応する FocusStyle を取得する
     func focusStyle(for screen: NSScreen) -> FocusStyle {
-        if let spaceUUID = AccessibilityHelper.getActiveSpaceUUID(for: screen) {
+        if let spaceUUID = AccessibilityHelper.getActiveSpaceUUID(for: screen), !spaceUUID.isEmpty {
             let key = spaceUUID
             if let raw = AppSettings.shared.focusStylesByMonitor[key],
                let style = FocusStyle(rawValue: raw) {
@@ -85,7 +89,7 @@ final class WindowManager: ObservableObject {
     /// 指定されたスクリーンの現在アクティブな仮想スペースに対応する FocusStyle を更新する
     func setFocusStyle(_ style: FocusStyle, for screen: NSScreen) {
         let key: String
-        if let spaceUUID = AccessibilityHelper.getActiveSpaceUUID(for: screen) {
+        if let spaceUUID = AccessibilityHelper.getActiveSpaceUUID(for: screen), !spaceUUID.isEmpty {
             key = spaceUUID
         } else {
             key = screen.identifier
@@ -177,8 +181,8 @@ final class WindowManager: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             guard let self else { return }
+            self.isSpaceSwitching = true
             Task { @MainActor in
-                self.isSpaceSwitching = true
                 // 仮想スペース切り替え直後はOS側の状態が不安定なため、0.4 秒のディレイを設ける
                 try? await Task.sleep(nanoseconds: 400_000_000) // 0.4秒待機
                 Log.info("WindowManager", "仮想デスクトップの切り替えを検知しました。ウィンドウリストを再構成します。")
@@ -504,6 +508,22 @@ final class WindowManager: ObservableObject {
 
         managedWindows = windows
         
+        // 仮想スペースの切り替え、または現在のフォーカスウィンドウが実在しない場合、フォーカスウィンドウを更新
+        let all = windows + stagedWindows
+        if isSpaceSwitching || focusedWindowID == nil || !all.contains(where: { $0.id == focusedWindowID }) {
+            if let frontmostApp = NSWorkspace.shared.frontmostApplication {
+                let frontmostPid = frontmostApp.processIdentifier
+                if let activeFocusedWindow = windows.first(where: { $0.pid == frontmostPid }) {
+                    focusedWindowID = activeFocusedWindow.id
+                } else {
+                    focusedWindowID = windows.first?.id
+                }
+            } else {
+                focusedWindowID = windows.first?.id
+            }
+            Log.info("WindowManager", "仮想スペース移動またはウィンドウ消失に伴いフォーカスウィンドウを自動設定: \(focusedWindowID ?? "nil")")
+        }
+        
         // 仮想スペース切り替え時やウィンドウリスト更新時に、現在のスペース用のマスターウィンドウIDを復帰させる
         restoreMasterWindowIDForActiveSpace()
         isSpaceSwitching = false
@@ -529,6 +549,11 @@ final class WindowManager: ObservableObject {
     private func restoreMasterWindowIDForActiveSpace() {
         guard let activeScreen = getActiveScreen() else { return }
         let key = AccessibilityHelper.getActiveSpaceUUID(for: activeScreen) ?? activeScreen.identifier
+        
+        guard !key.isEmpty else {
+            Log.warn("WindowManager", "restoreMasterWindowIDForActiveSpace: key が空文字のため処理をスキップします")
+            return
+        }
         
         Log.debug("WindowManager", "restoreMasterWindowIDForActiveSpace: key=\(key) savedMasterID=\(masterWindowIDsBySpace[key] ?? "nil")")
         

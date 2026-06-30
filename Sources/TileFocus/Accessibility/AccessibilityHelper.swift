@@ -316,7 +316,8 @@ enum AccessibilityHelper {
             // プライマリディスプレイ（displayID の UUID 取得失敗）のフォールバックとして、最初のディスプレイ情報を使う
             if let firstDisplay = displaySpaces.first,
                let currentSpace = firstDisplay["Current Space"] as? [String: Any],
-               let uuid = currentSpace["uuid"] as? String {
+               let uuid = currentSpace["uuid"] as? String,
+               !uuid.isEmpty {
                 return uuid
             }
             return nil
@@ -330,7 +331,8 @@ enum AccessibilityHelper {
             
             if displayIDStr == targetDisplayUUID {
                 if let currentSpace = displayInfo["Current Space"] as? [String: Any],
-                   let uuid = currentSpace["uuid"] as? String {
+                   let uuid = currentSpace["uuid"] as? String,
+                   !uuid.isEmpty {
                     return uuid
                 }
             }
@@ -339,7 +341,8 @@ enum AccessibilityHelper {
         // 見つからない場合のフォールバック
         if let firstDisplay = displaySpaces.first,
            let currentSpace = firstDisplay["Current Space"] as? [String: Any],
-           let uuid = currentSpace["uuid"] as? String {
+           let uuid = currentSpace["uuid"] as? String,
+           !uuid.isEmpty {
             return uuid
         }
         
