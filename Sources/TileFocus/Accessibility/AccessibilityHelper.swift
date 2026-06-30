@@ -183,18 +183,26 @@ enum AccessibilityHelper {
         let beforeFrameForLog = getFrame(of: window) ?? .zero
         
         let isExpanding = size.width > beforeFrameForLog.width || size.height > beforeFrameForLog.height
+        let waitTime: useconds_t = 20000 // 20ms
         
-        // OSのアニメーションをキャンセルさせず最後まで移動させるため、命令は1回のみにする
-        var success = false
+        // パス1：OSの内部パニック（API競合）を防ぐため、間に短い待機を入れる
         if isExpanding {
             setPosition(of: window, to: position)
-            success = setSize(of: window, to: size)
+            usleep(waitTime)
+            setSize(of: window, to: size)
         } else {
             setSize(of: window, to: size)
-            // 先にサイズ変更した場合、成功判定は setPosition ではなく setSize の結果を優先する（あるいは両方）
+            usleep(waitTime)
             setPosition(of: window, to: position)
-            success = true // 実際には上で実行済みなので一旦true扱い
         }
+        
+        // OSがウィンドウのフレーム補正やアニメーションをある程度進めるのを待つ
+        usleep(40000) // 40ms
+        
+        // パス2：1回目の競合で未適用になった部分や、OSによる微小なズレをダメ押しで矯正
+        setPosition(of: window, to: position)
+        usleep(waitTime)
+        let success = setSize(of: window, to: size)
         
         let afterFrame = getFrame(of: window)
         var actualSuccess = success
