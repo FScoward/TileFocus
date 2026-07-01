@@ -14,6 +14,8 @@ protocol WindowObserverDelegate: AnyObject {
     func windowObserver(_ observer: WindowObserver, didDetectFocusChanged pid: pid_t, title: String)
     /// アプリが終了した
     func windowObserver(_ observer: WindowObserver, didDetectApplicationTerminated pid: pid_t)
+    /// 個別のウィンドウ ID を特定できなかったため、ウィンドウリスト全体の再同期が必要
+    func windowObserverDidNeedWindowListRefresh(_ observer: WindowObserver)
 }
 
 // MARK: - WindowObserver
@@ -40,8 +42,8 @@ final class WindowObserver {
     /// NSWorkspace の通知 token
     private var workspaceObservers: [NSObjectProtocol] = []
 
-    /// AXUIElement から CGWindowID へのキャッシュ (閉じた時に一意に特定するため)
-    private var windowIDCache: [AXElementWrapper: CGWindowID] = [:]
+    /// AXUIElement からウィンドウ識別子へのキャッシュ (閉じた時に一意に特定するため)
+    private var windowIdentityCache: [AXElementWrapper: WindowIdentity] = [:]
 
     // MARK: - Public API
 
@@ -153,9 +155,8 @@ final class WindowObserver {
             kAXWindowResizedNotification,        // リサイズ
         ]
         for window in windows {
-            // キャッシュに windowID を保存
             if let wID = AccessibilityHelper.getWindowID(of: window) {
-                windowIDCache[AXElementWrapper(element: window)] = wID
+                windowIdentityCache[AXElementWrapper(element: window)] = WindowIdentity(pid: pid, windowID: wID)
             }
             for notification in windowNotifications {
                 AXObserverAddNotification(observer, window, notification as CFString, selfPtr)
@@ -170,13 +171,7 @@ final class WindowObserver {
         axObservers.removeValue(forKey: pid)
         
         // キャッシュからこの pid のエントリをすべてクリーンアップ
-        for key in windowIDCache.keys {
-            var cachedPid: pid_t = 0
-            AXUIElementGetPid(key.element, &cachedPid)
-            if cachedPid == pid {
-                windowIDCache.removeValue(forKey: key)
-            }
-        }
+        windowIdentityCache = windowIdentityCache.filter { $0.value.pid != pid }
         
         Log.info("WindowObserver", "登録解除: pid=\(pid)")
     }
@@ -248,7 +243,7 @@ final class WindowObserver {
         
         // キャッシュに保存
         if windowID != 0 {
-            windowIDCache[AXElementWrapper(element: element)] = windowID
+            windowIdentityCache[AXElementWrapper(element: element)] = WindowIdentity(pid: pid, windowID: windowID)
         }
 
         let window = ManagedWindow(
@@ -264,43 +259,46 @@ final class WindowObserver {
     }
 
     private func handleWindowClosed(element: AXUIElement) {
+        let directWrapper = AXElementWrapper(element: element)
+        if let identity = windowIdentityCache.removeValue(forKey: directWrapper) {
+            let id = identity.id
+            Log.info("WindowObserver", "キャッシュからウィンドウクローズを特定しました: id=\(id)")
+            delegate?.windowObserver(self, didDetectWindowClosed: id)
+            return
+        }
+
         var pid: pid_t = 0
         AXUIElementGetPid(element, &pid)
-        
-        // 1. windowIDCache の中から、無効化された (属性取得がエラーになる) かつ pid が一致する wrapper を探す
-        // (Destroyed 通知の element 自体は無効なため CFEqual 等のキー比較が失敗する対策)
+
+        // 直接キーで引けない場合は、無効化された AX 要素をキャッシュ内から探す。
+        // Destroyed 通知の element は属性取得に失敗しやすいため、閉じる前に保存した pid/windowID を使う。
         var closedWrapper: AXElementWrapper? = nil
-        var closedWindowID: CGWindowID = 0
-        
-        for (wrapper, wID) in windowIDCache {
-            var wrapperPid: pid_t = 0
-            AXUIElementGetPid(wrapper.element, &wrapperPid)
-            guard wrapperPid == pid else { continue }
-            
+        var closedIdentity: WindowIdentity?
+
+        for (wrapper, identity) in windowIdentityCache {
+            if pid != 0 {
+                guard identity.pid == pid else { continue }
+            }
+
             var value: CFTypeRef?
             let res = AXUIElementCopyAttributeValue(wrapper.element, kAXRoleAttribute as CFString, &value)
             if res != .success {
-                // 属性コピーが失敗 ➔ このウィンドウが閉じられたと特定
                 closedWrapper = wrapper
-                closedWindowID = wID
+                closedIdentity = identity
                 break
             }
         }
-        
-        let windowID: CGWindowID
-        if let wrapper = closedWrapper {
-            windowID = closedWindowID
-            windowIDCache.removeValue(forKey: wrapper)
-            Log.info("WindowObserver", "無効化されたAX要素を検出しウィンドウクローズを特定しました: id=\(pid)-\(windowID)")
-        } else {
-            // フォールバック
-            let wrapper = AXElementWrapper(element: element)
-            windowID = windowIDCache[wrapper] ?? 0
-            windowIDCache.removeValue(forKey: wrapper)
+
+        if let wrapper = closedWrapper, let identity = closedIdentity {
+            windowIdentityCache.removeValue(forKey: wrapper)
+            let id = identity.id
+            Log.info("WindowObserver", "無効化されたAX要素を検出しウィンドウクローズを特定しました: id=\(id)")
+            delegate?.windowObserver(self, didDetectWindowClosed: id)
+            return
         }
-        
-        let id = "\(pid)-\(windowID)"
-        delegate?.windowObserver(self, didDetectWindowClosed: id)
+
+        Log.warn("WindowObserver", "閉じられたウィンドウを特定できませんでした。ウィンドウリストを再同期します: pid=\(pid)")
+        delegate?.windowObserverDidNeedWindowListRefresh(self)
     }
 
     private func handleWindowMoved(element: AXUIElement) {
@@ -324,6 +322,15 @@ final class WindowObserver {
         )
 
         delegate?.windowObserver(self, didDetectWindowMoved: window)
+    }
+}
+
+private struct WindowIdentity {
+    let pid: pid_t
+    let windowID: CGWindowID
+
+    var id: String {
+        "\(pid)-\(windowID)"
     }
 }
 

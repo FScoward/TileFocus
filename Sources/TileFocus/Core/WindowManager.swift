@@ -145,6 +145,7 @@ final class WindowManager: ObservableObject {
     private var windowObserver: WindowObserver?
     private var hotKeyManager: HotKeyManager?
     private var workspaceObservers: [NSObjectProtocol] = []
+    private var closedWindowReconciliationTimer: Timer?
     /// 仮想スペースUUID（またはモニターID）ごとのマスターウィンドウIDの記憶
     private var masterWindowIDsBySpace: [String: String] = [:]
     private var tilingGuardGeneration: UInt64 = 0
@@ -161,6 +162,10 @@ final class WindowManager: ObservableObject {
     #else
     private init() {}
     #endif
+
+    deinit {
+        closedWindowReconciliationTimer?.invalidate()
+    }
 
     // MARK: - Lifecycle
 
@@ -221,6 +226,7 @@ final class WindowManager: ObservableObject {
 
         // 現在実行中のウィンドウを取得
         refreshWindowList()
+        startClosedWindowReconciliation()
 
         print("[WindowManager] 監視開始")
     }
@@ -691,6 +697,7 @@ final class WindowManager: ObservableObject {
     func removeWindow(id: String) {
         managedWindows.removeAll { $0.id == id }
         stagedWindows.removeAll { $0.id == id }
+        stageManager?.syncStagedWindows(stagedWindows)
         if focusedWindowID == id {
             focusedWindowID = nil
             DimmingManager.shared.updateFocusedWindowRect()
@@ -703,6 +710,45 @@ final class WindowManager: ObservableObject {
             tilingController?.retile()
         } else if currentMode == .focus || currentMode == .float {
             focusController?.handleWindowClosed(id: id)
+        }
+    }
+
+    private func startClosedWindowReconciliation() {
+        guard closedWindowReconciliationTimer == nil else { return }
+
+        closedWindowReconciliationTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.removeClosedWindowsIfNeeded()
+            }
+        }
+    }
+
+    private func removeClosedWindowsIfNeeded() {
+        #if DEBUG
+        if isTestingMode { return }
+        #endif
+        guard !isSpaceSwitching else { return }
+
+        let trackedWindows = managedWindows + stagedWindows
+        guard !trackedWindows.isEmpty else { return }
+
+        let trackedPids = Set(trackedWindows.map(\.pid))
+        var existingIDs = Set<String>()
+
+        for pid in trackedPids {
+            guard NSRunningApplication(processIdentifier: pid) != nil else { continue }
+            for axWindow in AccessibilityHelper.getWindows(for: pid) {
+                guard let windowID = AccessibilityHelper.getWindowID(of: axWindow) else { continue }
+                existingIDs.insert("\(pid)-\(windowID)")
+            }
+        }
+
+        let closedIDs = Set(trackedWindows.map(\.id)).subtracting(existingIDs)
+        guard !closedIDs.isEmpty else { return }
+
+        Log.info("WindowManager", "存在しないウィンドウを検知しました: \(closedIDs.sorted().joined(separator: ", "))")
+        for id in closedIDs.sorted() {
+            removeWindow(id: id)
         }
     }
 
@@ -880,6 +926,13 @@ extension WindowManager: WindowObserverDelegate {
     ) {
         Task { @MainActor in
             removeWindows(for: pid)
+        }
+    }
+
+    nonisolated func windowObserverDidNeedWindowListRefresh(_ observer: WindowObserver) {
+        Task { @MainActor in
+            refreshWindowList()
+            triggerLayoutUpdate()
         }
     }
 }
