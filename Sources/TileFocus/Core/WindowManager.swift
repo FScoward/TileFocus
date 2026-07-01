@@ -488,6 +488,7 @@ final class WindowManager: ObservableObject {
         let selfPid = ProcessInfo.processInfo.processIdentifier
         let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
         let running = NSWorkspace.shared.runningApplications
+        let settings = AppSettings.shared
         var windows: [ManagedWindow] = []
 
         // フロントアプリを先頭に処理するため、並び替え
@@ -505,6 +506,10 @@ final class WindowManager: ObservableObject {
         for app in sortedApps {
             let pid = app.processIdentifier
             let localizedName = app.localizedName!
+            if settings.isAutoPlacementExcluded(bundleIdentifier: app.bundleIdentifier, appName: localizedName) {
+                Log.debug("WindowManager", "自動配置の対象外アプリのためスキップ: \(localizedName) bundleIdentifier=\(app.bundleIdentifier ?? "nil")")
+                continue
+            }
 
             // isTileable でフィルタリング（標準ウィンドウ・リサイズ可能・非最小化）
             let axWindows = AccessibilityHelper.getWindows(for: pid)
@@ -541,6 +546,7 @@ final class WindowManager: ObservableObject {
         let runningPids = Set(running.map { $0.processIdentifier })
         let validStaged = stagedWindows.filter { staged in
             guard runningPids.contains(staged.pid) else { return false }
+            guard !settings.isAutoPlacementExcluded(bundleIdentifier: staged.bundleIdentifier, appName: staged.appName) else { return false }
             // アプリは起動しているが、ウィンドウがまだ実在しているか
             let axWindows = AccessibilityHelper.getWindows(for: staged.pid)
             return axWindows.contains { axWin in
@@ -779,10 +785,13 @@ final class WindowManager: ObservableObject {
     // MARK: - Helpers
 
     /// 現在フォーカスされているウィンドウを取得
-    private func getFocusedWindow() -> ManagedWindow? {
+    func getFocusedWindow() -> ManagedWindow? {
+        if let focusedWindowID,
+           let focused = (managedWindows + stagedWindows).first(where: { $0.id == focusedWindowID }) {
+            return focused
+        }
         guard let app = NSWorkspace.shared.frontmostApplication else { return nil }
-        let pid = app.processIdentifier
-        return managedWindows.first { $0.pid == pid }
+        return managedWindows.first { $0.pid == app.processIdentifier }
     }
 }
 

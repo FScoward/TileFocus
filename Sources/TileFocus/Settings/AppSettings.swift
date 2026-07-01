@@ -51,6 +51,8 @@ final class AppSettings: ObservableObject {
         static let floatModeHeightRatio = "floatModeHeightRatio"
         static let isDimmingEnabled = "isDimmingEnabled"
         static let dimmingOpacity = "dimmingOpacity"
+        static let excludedAppIdentifiers = "excludedAppIdentifiers"
+        static let excludedAppNamesByIdentifier = "excludedAppNamesByIdentifier"
     }
 
     // MARK: - Settings
@@ -98,6 +100,16 @@ final class AppSettings: ObservableObject {
     /// 選択したウィンドウ以外を暗くする際の不透明度
     @Published var dimmingOpacity: Double {
         didSet { defaults.set(dimmingOpacity, forKey: Keys.dimmingOpacity) }
+    }
+
+    /// 自動配置の対象外にするアプリ識別子
+    @Published var excludedAppIdentifiers: [String] {
+        didSet { defaults.set(excludedAppIdentifiers, forKey: Keys.excludedAppIdentifiers) }
+    }
+
+    /// 対象外アプリの表示名
+    @Published var excludedAppNamesByIdentifier: [String: String] {
+        didSet { defaults.set(excludedAppNamesByIdentifier, forKey: Keys.excludedAppNamesByIdentifier) }
     }
 
     /// タイリングの外側ギャップ（px）
@@ -159,10 +171,37 @@ final class AppSettings: ObservableObject {
 
         let savedDimmingOpacity = defaults.double(forKey: Keys.dimmingOpacity)
         dimmingOpacity = savedDimmingOpacity == 0 ? 0.3 : savedDimmingOpacity
+
+        excludedAppIdentifiers = defaults.stringArray(forKey: Keys.excludedAppIdentifiers) ?? []
+        excludedAppNamesByIdentifier = defaults.dictionary(forKey: Keys.excludedAppNamesByIdentifier) as? [String: String] ?? [:]
     }
 
     /// TilingGap 構造体として返す
     var tilingGap: TilingGap {
         TilingGap(outer: tilingGapOuter, inner: tilingGapInner)
+    }
+
+    func appExclusionIdentifier(bundleIdentifier: String?, appName: String) -> String {
+        if let bundleIdentifier, !bundleIdentifier.isEmpty {
+            return "bundle:\(bundleIdentifier)"
+        }
+        return "name:\(appName)"
+    }
+
+    func isAutoPlacementExcluded(bundleIdentifier: String?, appName: String) -> Bool {
+        excludedAppIdentifiers.contains(appExclusionIdentifier(bundleIdentifier: bundleIdentifier, appName: appName))
+    }
+
+    func excludeFromAutoPlacement(bundleIdentifier: String?, appName: String) {
+        let identifier = appExclusionIdentifier(bundleIdentifier: bundleIdentifier, appName: appName)
+        if !excludedAppIdentifiers.contains(identifier) {
+            excludedAppIdentifiers.append(identifier)
+        }
+        excludedAppNamesByIdentifier[identifier] = appName
+    }
+
+    func includeInAutoPlacement(identifier: String) {
+        excludedAppIdentifiers.removeAll { $0 == identifier }
+        excludedAppNamesByIdentifier.removeValue(forKey: identifier)
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 /// 設定画面 UI
 struct SettingsView: View {
@@ -25,7 +26,7 @@ struct SettingsView: View {
                 }
                 .tag(2)
         }
-        .frame(width: 480, height: 360)
+        .frame(width: 520, height: 460)
     }
 }
 
@@ -73,6 +74,34 @@ private struct GeneralSettingsTab: View {
                                 .foregroundStyle(.secondary)
                         }
                         Slider(value: $settings.dimmingOpacity, in: 0.1...0.8, step: 0.05)
+                    }
+                }
+            }
+
+            Section("自動配置の対象外") {
+                Button {
+                    excludeFrontmostApplication()
+                } label: {
+                    Label("現在のアプリを対象外にする", systemImage: "rectangle.badge.minus")
+                }
+
+                if settings.excludedAppIdentifiers.isEmpty {
+                    Text("対象外アプリはありません")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(settings.excludedAppIdentifiers, id: \.self) { identifier in
+                        HStack {
+                            Text(settings.excludedAppNamesByIdentifier[identifier] ?? displayName(for: identifier))
+                            Spacer()
+                            Button {
+                                settings.includeInAutoPlacement(identifier: identifier)
+                                refreshLayoutAfterExclusionChange()
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("自動配置の対象に戻す")
+                        }
                     }
                 }
             }
@@ -139,6 +168,38 @@ private struct GeneralSettingsTab: View {
         .onChange(of: settings.dimmingOpacity) { _ in
             DimmingManager.shared.updateFocusedWindowRect()
         }
+    }
+
+    private func excludeFrontmostApplication() {
+        if let focused = WindowManager.shared.getFocusedWindow() {
+            settings.excludeFromAutoPlacement(bundleIdentifier: focused.bundleIdentifier, appName: focused.appName)
+            refreshLayoutAfterExclusionChange()
+            return
+        }
+
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier,
+              let appName = app.localizedName else {
+            return
+        }
+        settings.excludeFromAutoPlacement(bundleIdentifier: app.bundleIdentifier, appName: appName)
+        refreshLayoutAfterExclusionChange()
+    }
+
+    private func refreshLayoutAfterExclusionChange() {
+        WindowManager.shared.refreshWindowList()
+        WindowManager.shared.requestRetile()
+        WindowManager.shared.requestFocusLayoutUpdate()
+    }
+
+    private func displayName(for identifier: String) -> String {
+        if identifier.hasPrefix("bundle:") {
+            return String(identifier.dropFirst("bundle:".count))
+        }
+        if identifier.hasPrefix("name:") {
+            return String(identifier.dropFirst("name:".count))
+        }
+        return identifier
     }
 }
 
