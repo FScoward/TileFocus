@@ -74,6 +74,11 @@ final class TilingModeController {
 
     private func applyTiling() {
         guard let windowManager else { return }
+        guard !windowManager.isSpaceSwitching else {
+            Log.debug(Self.tag, "applyTiling: スペース切り替え中のためスキップ")
+            return
+        }
+
         let tiledWindows = windowManager.managedWindows.filter { $0.state != .staged }
 
         Log.info(Self.tag, "applyTiling() 開始 対象=\(tiledWindows.count)枚")

@@ -209,6 +209,71 @@ final class FocusModeControllerTests: XCTestCase {
         // スペース切り替え完了
         windowManager.isSpaceSwitching = false
     }
+
+    /// 仮想スペース切り替え中に遅延した移動通知が届いても、管理中のフレームを上書きしないことをテスト
+    func testSpaceSwitchingIgnoresWindowMovedFrameUpdate() async throws {
+        let windowManager = WindowManager()
+        windowManager.isTestingMode = true
+
+        let originalFrame = CGRect(x: 10, y: 20, width: 300, height: 400)
+        let movedFrame = CGRect(x: 500, y: 600, width: 700, height: 800)
+        let window = ManagedWindow(
+            pid: 1001,
+            windowID: 1,
+            title: "AppA",
+            appName: "AppA",
+            bundleIdentifier: "com.AppA",
+            frame: originalFrame
+        )
+        let movedWindow = ManagedWindow(
+            pid: window.pid,
+            windowID: window.windowID,
+            title: window.title,
+            appName: window.appName,
+            bundleIdentifier: window.bundleIdentifier,
+            frame: movedFrame
+        )
+
+        windowManager.updateManagedWindows([window])
+        windowManager.isSpaceSwitching = true
+
+        windowManager.windowObserver(WindowObserver(), didDetectWindowMoved: movedWindow)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(windowManager.managedWindows.first?.frame, originalFrame, "スペース切り替え中の移動通知でフレームキャッシュが上書きされるべきではありません")
+
+        windowManager.isSpaceSwitching = false
+    }
+
+    /// 仮想スペース切り替え中に予約済みレイアウトが実行されても、マスター自動割り当てなどの再配置前処理を行わないことをテスト
+    func testSpaceSwitchingSkipsApplyLayoutSideEffects() async throws {
+        let windowManager = WindowManager()
+        windowManager.isTestingMode = true
+
+        AppSettings.shared.crownSwapTrigger = .clickOnly
+
+        let controller = FocusModeController(windowManager: windowManager)
+        windowManager.setFocusControllerForTesting(controller)
+
+        windowManager.switchMode(to: .focus)
+
+        let window = ManagedWindow(
+            pid: 1001,
+            windowID: 1,
+            title: "AppA",
+            appName: "AppA",
+            bundleIdentifier: "com.AppA",
+            frame: .zero
+        )
+        windowManager.updateManagedWindows([window])
+        windowManager.isSpaceSwitching = true
+
+        controller.applyLayout()
+
+        XCTAssertNil(windowManager.masterWindowID, "スペース切り替え中の applyLayout はマスターを自動設定するべきではありません")
+
+        windowManager.isSpaceSwitching = false
+    }
     
     /// ctrlShiftClick設定のとき、マスターが未設定(nil)の状態でレイアウトが走っても、自動的にマスターが設定されないことをテスト
     func testCtrlShiftClickDoesNotAssignMasterAutomaticallyIfNil() async throws {

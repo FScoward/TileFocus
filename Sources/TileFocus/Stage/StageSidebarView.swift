@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 import UniformTypeIdentifiers
 
 /// ホバー検出用のカスタムコンテナビュー（NSHostingView をラップしてホバーイベントを確実にキャッチする）
@@ -58,10 +59,17 @@ class StageTopBarPanel: NSPanel {
 final class StageTopBarController: NSObject {
     private var panels: [NSScreen: StageTopBarPanel] = [:]
     private var collapseWorkItems: [NSScreen: DispatchWorkItem] = [:]
+    private var windowStateCancellable: AnyCancellable?
     
     private let barWidth: CGFloat = 620
     private let collapsedHeight: CGFloat = 4
     private let visibleOffset: CGFloat = 8 // 隠れている時に画面内に露出させるピクセル数（ホバー検知用）
+    private let windowItemHeight: CGFloat = 36
+    private let windowItemRowSpacing: CGFloat = 6
+    private let activeSectionVerticalPadding: CGFloat = 16
+    private let sectionHeaderHeight: CGFloat = 10
+    private let sectionHeaderSpacing: CGFloat = 6
+    private let stagedSectionChromeHeight: CGFloat = 41
     
     @MainActor
     private func getBarWidth(for screen: NSScreen, windowManager: WindowManager) -> CGFloat {
@@ -153,9 +161,21 @@ final class StageTopBarController: NSObject {
             panels[screen] = panel
             panel.orderFrontRegardless()
         }
+
+        windowStateCancellable = windowManager.objectWillChange.sink { [weak self, weak windowManager] _ in
+            DispatchQueue.main.async { [weak self, weak windowManager] in
+                guard let self, let windowManager else { return }
+                Task { @MainActor in
+                    self.refreshExpandedPanels(windowManager: windowManager)
+                }
+            }
+        }
     }
     
     func hide() {
+        windowStateCancellable?.cancel()
+        windowStateCancellable = nil
+
         for workItem in collapseWorkItems.values {
             workItem.cancel()
         }
@@ -165,6 +185,15 @@ final class StageTopBarController: NSObject {
             panel.orderOut(nil)
         }
         panels.removeAll()
+    }
+
+    @MainActor
+    private func refreshExpandedPanels(windowManager: WindowManager) {
+        guard windowManager.isStagedWindowsBarExpanded else { return }
+
+        for (screen, panel) in panels {
+            updatePanelCollapseState(collapsed: false, panel: panel, screen: screen, windowManager: windowManager)
+        }
     }
     
     @MainActor
@@ -189,16 +218,23 @@ final class StageTopBarController: NSObject {
             let split = getSplitWindows(activeWins: activeWins, focusStyle: focusStyle, masterWindowID: windowManager.masterWindow?.id)
             let maxActiveRows = max(split.left.count, max(split.main.count, split.right.count))
             
-            // 各行 30px + 行間 6px、ヘッダーパディングなど
-            let activeRowHeight = maxActiveRows * 30
-            let activeGapHeight = max(0, maxActiveRows - 1) * 6
-            let activeHeight = CGFloat(activeRowHeight + activeGapHeight + 32)
+            // windowItem の実寸と列見出し、上下 padding に合わせて計算する
+            let activeRows = max(1, maxActiveRows)
+            let activeRowHeight = CGFloat(activeRows) * windowItemHeight
+            let activeGapHeight = CGFloat(max(0, activeRows - 1)) * windowItemRowSpacing
+            let activeHeight = activeRowHeight
+                + activeGapHeight
+                + sectionHeaderHeight
+                + sectionHeaderSpacing
+                + activeSectionVerticalPadding
             
-            // stagedCount がある場合は、Divider + ラベル + グリッド高さを加算
+            // stagedCount がある場合は、外側 VStack の spacing、Divider、ラベル、グリッド、下 padding を加算
             let stagedHeight: CGFloat
             if stagedCount > 0 {
                 let stagedRows = Int(ceil(Double(stagedCount) / 4.0))
-                stagedHeight = 24 + CGFloat(stagedRows * 30 + (stagedRows - 1) * 6)
+                stagedHeight = stagedSectionChromeHeight
+                    + CGFloat(stagedRows) * windowItemHeight
+                    + CGFloat(max(0, stagedRows - 1)) * windowItemRowSpacing
             } else {
                 stagedHeight = 0
             }

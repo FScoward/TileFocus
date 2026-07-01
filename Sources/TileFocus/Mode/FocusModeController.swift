@@ -447,6 +447,10 @@ final class FocusModeController {
         isApplyingLayout = true
         defer { isApplyingLayout = false }
         guard let windowManager else { return }
+        guard !windowManager.isSpaceSwitching else {
+            Log.debug(Self.tag, "applyLayout: スペース切り替え中のためスキップ")
+            return
+        }
         
         if windowManager.currentMode == .float {
             applyFloatLayout()

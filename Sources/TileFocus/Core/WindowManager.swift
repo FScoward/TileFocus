@@ -109,6 +109,11 @@ final class WindowManager: ObservableObject {
     }
 
     private func triggerLayoutUpdate() {
+        guard !isSpaceSwitching else {
+            Log.debug("WindowManager", "スペース切り替え中のためレイアウト更新をスキップ")
+            return
+        }
+
         switch currentMode {
         case .tiling:
             tilingController?.retile()
@@ -203,9 +208,10 @@ final class WindowManager: ObservableObject {
                 try? await Task.sleep(nanoseconds: 400_000_000) // 0.4秒待機
                 Log.info("WindowManager", "仮想デスクトップの切り替えを検知しました。ウィンドウリストを再構成します。")
                 self.refreshWindowList()
-                self.triggerLayoutUpdate()
+                DimmingManager.shared.updateFocusedWindowRect()
                 
-                // レイアウト更新の指示が飛んでから、実際に適用されるまでの間もガードを維持するため、少し遅らせて false に戻す
+                // スペース切り替えに伴う AX の遅延通知を吸収するため、少し遅らせて false に戻す。
+                // ここでレイアウトを再適用すると、移動先スペースの既存ウィンドウ位置を勝手に変更してしまう。
                 try? await Task.sleep(nanoseconds: 200_000_000) // 0.2秒待機
                 self.isSpaceSwitching = false
                 Log.info("WindowManager", "仮想スペース切り替えガードを解除しました。")
@@ -670,6 +676,10 @@ final class WindowManager: ObservableObject {
         guard activeSpaceIDs.contains(window.windowID) else { return }
 
         managedWindows.append(window)
+        guard !isSpaceSwitching else {
+            Log.debug("WindowManager", "スペース切り替え中のウィンドウ追加のため、レイアウト更新をスキップ: \(window.appName)")
+            return
+        }
         if currentMode == .tiling {
             tilingController?.retile()
         } else if currentMode == .focus {
@@ -684,6 +694,10 @@ final class WindowManager: ObservableObject {
         if focusedWindowID == id {
             focusedWindowID = nil
             DimmingManager.shared.updateFocusedWindowRect()
+        }
+        guard !isSpaceSwitching else {
+            Log.debug("WindowManager", "スペース切り替え中のウィンドウ削除のため、レイアウト更新をスキップ: \(id)")
+            return
         }
         if currentMode == .tiling {
             tilingController?.retile()
@@ -701,6 +715,11 @@ final class WindowManager: ObservableObject {
         if let focusedID = focusedWindowID, focusedID.hasPrefix("\(pid)-") {
             focusedWindowID = nil
             DimmingManager.shared.updateFocusedWindowRect()
+        }
+
+        guard !isSpaceSwitching else {
+            Log.debug("WindowManager", "スペース切り替え中のアプリ終了通知のため、レイアウト更新をスキップ: pid=\(pid)")
+            return
         }
         
         if currentMode == .tiling {
@@ -822,6 +841,10 @@ extension WindowManager: WindowObserverDelegate {
     ) {
         // ユーザーが手動で移動した場合のみフレームを更新（タイリング中は無視）
         Task { @MainActor in
+            guard !isSpaceSwitching else {
+                Log.debug("WindowManager", "スペース切り替え中の移動通知のためフレーム更新をスキップ: \(window.id)")
+                return
+            }
             if let index = managedWindows.firstIndex(where: { $0.id == window.id }) {
                 managedWindows[index].frame = window.frame
                 if focusedWindowID == window.id {
