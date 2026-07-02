@@ -146,6 +146,7 @@ final class WindowManager: ObservableObject {
     private var hotKeyManager: HotKeyManager?
     private var workspaceObservers: [NSObjectProtocol] = []
     private var closedWindowReconciliationTimer: Timer?
+    private var windowListRefreshRetryGeneration: UInt64 = 0
     /// 仮想スペースUUID（またはモニターID）ごとのマスターウィンドウIDの記憶
     private var masterWindowIDsBySpace: [String: String] = [:]
     private var tilingGuardGeneration: UInt64 = 0
@@ -213,6 +214,7 @@ final class WindowManager: ObservableObject {
                 try? await Task.sleep(nanoseconds: 400_000_000) // 0.4秒待機
                 Log.info("WindowManager", "仮想デスクトップの切り替えを検知しました。ウィンドウリストを再構成します。")
                 self.refreshWindowList()
+                self.scheduleWindowListRefreshRetries(reason: "spaceChanged", delays: [0.4, 1.0])
                 DimmingManager.shared.updateFocusedWindowRect()
                 
                 // スペース切り替えに伴う AX の遅延通知を吸収するため、少し遅らせて false に戻す。
@@ -226,6 +228,7 @@ final class WindowManager: ObservableObject {
 
         // 現在実行中のウィンドウを取得
         refreshWindowList()
+        scheduleWindowListRefreshRetries(reason: "initial", delays: [0.3, 1.0, 2.0])
         startClosedWindowReconciliation()
 
         print("[WindowManager] 監視開始")
@@ -502,6 +505,10 @@ final class WindowManager: ObservableObject {
         let running = NSWorkspace.shared.runningApplications
         let settings = AppSettings.shared
         var windows: [ManagedWindow] = []
+        var totalAXWindowCount = 0
+        var tileableWindowCount = 0
+        var skippedWithoutWindowIDCount = 0
+        var skippedInactiveSpaceCount = 0
 
         // フロントアプリを先頭に処理するため、並び替え
         var sortedApps = running.filter { app in
@@ -524,8 +531,10 @@ final class WindowManager: ObservableObject {
             }
 
             // isTileable でフィルタリング（標準ウィンドウ・リサイズ可能・非最小化）
-            let axWindows = AccessibilityHelper.getWindows(for: pid)
-                .filter { AccessibilityHelper.isTileable($0) }
+            let allAXWindows = AccessibilityHelper.getWindows(for: pid)
+            totalAXWindowCount += allAXWindows.count
+            let axWindows = allAXWindows.filter { AccessibilityHelper.isTileable($0) }
+            tileableWindowCount += axWindows.count
 
             guard !axWindows.isEmpty else { continue }
 
@@ -535,9 +544,15 @@ final class WindowManager: ObservableObject {
             }
 
             for axWindow in sortedWins {
-                let windowID = AccessibilityHelper.getWindowID(of: axWindow) ?? 0
+                guard let windowID = AccessibilityHelper.getWindowID(of: axWindow), windowID != 0 else {
+                    skippedWithoutWindowIDCount += 1
+                    continue
+                }
                 // 現在アクティブな仮想スペース上に存在するウィンドウのみ対象とする
-                guard activeSpaceIDs.contains(windowID) else { continue }
+                guard activeSpaceIDs.contains(windowID) else {
+                    skippedInactiveSpaceCount += 1
+                    continue
+                }
 
                 guard let frame = AccessibilityHelper.getFrame(of: axWindow) else { continue }
                 let title = AccessibilityHelper.getTitle(of: axWindow) ?? ""
@@ -554,6 +569,19 @@ final class WindowManager: ObservableObject {
             }
         }
  
+        if !managedWindows.isEmpty,
+           !activeSpaceIDs.isEmpty,
+           !sortedApps.isEmpty,
+           tileableWindowCount > 0,
+           windows.isEmpty {
+            Log.warn(
+                "WindowManager",
+                "ウィンドウ再取得が空になったため既存リストを保持して再試行します: activeSpaceIDs=\(activeSpaceIDs.count) apps=\(sortedApps.count) ax=\(totalAXWindowCount) tileable=\(tileableWindowCount) noID=\(skippedWithoutWindowIDCount) inactiveSpace=\(skippedInactiveSpaceCount)"
+            )
+            scheduleWindowListRefreshRetries(reason: "emptySnapshot", delays: [0.3, 1.0])
+            return
+        }
+
         // stagedWindows のクリーンアップ（終了済みのアプリや存在しないウィンドウを排除）
         let runningPids = Set(running.map { $0.processIdentifier })
         let validStaged = stagedWindows.filter { staged in
@@ -589,9 +617,30 @@ final class WindowManager: ObservableObject {
         // 仮想スペース切り替え時やウィンドウリスト更新時に、現在のスペース用のマスターウィンドウIDを復帰させる
         restoreMasterWindowIDForActiveSpace()
 
-        print("[WindowManager] ウィンドウリスト更新: \(windows.count) 件 (front=\(frontPid.map(String.init) ?? "none"))")
+        Log.info(
+            "WindowManager",
+            "ウィンドウリスト更新: managed=\(windows.count) front=\(frontPid.map(String.init) ?? "none") activeSpaceIDs=\(activeSpaceIDs.count) apps=\(sortedApps.count) ax=\(totalAXWindowCount) tileable=\(tileableWindowCount) noID=\(skippedWithoutWindowIDCount) inactiveSpace=\(skippedInactiveSpaceCount)"
+        )
         for (i, w) in windows.enumerated() {
-            print("  [\(i)] \(w.appName) - \(w.title) frame=\(w.frame)")
+            Log.debug("WindowManager", "  [\(i)] \(w.appName) - \(w.title) frame=\(w.frame)")
+        }
+    }
+
+    private func scheduleWindowListRefreshRetries(reason: String, delays: [TimeInterval]) {
+        guard !delays.isEmpty else { return }
+        windowListRefreshRetryGeneration &+= 1
+        let generation = windowListRefreshRetryGeneration
+
+        for delay in delays {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self else { return }
+                guard generation == self.windowListRefreshRetryGeneration else {
+                    Log.debug("WindowManager", "ウィンドウリスト再取得リトライをスキップ: reason=\(reason) generation=\(generation) current=\(self.windowListRefreshRetryGeneration)")
+                    return
+                }
+                Log.info("WindowManager", "ウィンドウリスト再取得リトライ: reason=\(reason) delay=\(delay)")
+                self.refreshWindowList()
+            }
         }
     }
 

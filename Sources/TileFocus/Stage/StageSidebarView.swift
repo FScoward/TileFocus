@@ -963,6 +963,14 @@ struct StageTopBarView: View {
                         }
                         
                         let focusStyle = windowManager.focusStyle(for: screen)
+                        rebalanceSideColumnsAfterCrossColumnMove(
+                            split: &split,
+                            movingWindowID: movingWindow.id,
+                            sourceColumn: dragStartCol,
+                            sourceRow: dragStartRow,
+                            targetColumn: dragTargetCol,
+                            targetRow: dragTargetRow
+                        )
                         let movesToMain = dragTargetCol == 1
                         let nextFocusedID = movesToMain ? movingWindow.id : windowManager.focusedWindowID
                         let nextMasterID = movesToMain ? movingWindow.id : windowManager.masterWindow?.id
@@ -1360,6 +1368,39 @@ func maxDropRow(forColumn column: Int, focusStyle: FocusStyle, columnCount: Int,
         return column == 1 ? min(insertLimit, 1) : insertLimit
     case .absoluteSplit2:
         return column == 1 ? 0 : insertLimit
+    }
+}
+
+func rebalanceSideColumnsAfterCrossColumnMove(
+    split: inout SplitWindows,
+    movingWindowID: String,
+    sourceColumn: Int,
+    sourceRow: Int,
+    targetColumn: Int,
+    targetRow: Int
+) {
+    guard sourceColumn != targetColumn else { return }
+    guard (sourceColumn == 0 && targetColumn == 2) || (sourceColumn == 2 && targetColumn == 0) else { return }
+
+    var source = sourceColumn == 0 ? split.left : split.right
+    var target = targetColumn == 0 ? split.left : split.right
+
+    guard source.isEmpty, target.count > 1 else { return }
+
+    let fallbackIndex = max(0, min(target.count - 1, targetRow))
+    let displacedIndex = target.indices.first { $0 > targetRow && target[$0].id != movingWindowID }
+        ?? target.indices.reversed().first { $0 < targetRow && target[$0].id != movingWindowID }
+        ?? target.indices.first { target[$0].id != movingWindowID }
+        ?? fallbackIndex
+    let displaced = target.remove(at: displacedIndex)
+    source.insert(displaced, at: min(sourceRow, source.count))
+
+    if sourceColumn == 0 {
+        split.left = source
+        split.right = target
+    } else {
+        split.right = source
+        split.left = target
     }
 }
 
