@@ -5,15 +5,18 @@ import XCTest
 final class FocusModeControllerTests: XCTestCase {
     
     private var originalTrigger: CrownSwapTrigger = .clickOnly
+    private var originalModesBySpace: [String: String] = [:]
     
     override func setUp() {
         super.setUp()
         // アプリケーション全体の設定だけ退避
         originalTrigger = AppSettings.shared.crownSwapTrigger
+        originalModesBySpace = AppSettings.shared.modesBySpace
     }
     
     override func tearDown() {
         AppSettings.shared.crownSwapTrigger = originalTrigger
+        AppSettings.shared.modesBySpace = originalModesBySpace
         super.tearDown()
     }
     
@@ -271,6 +274,43 @@ final class FocusModeControllerTests: XCTestCase {
         controller.applyLayout()
 
         XCTAssertNil(windowManager.masterWindowID, "スペース切り替え中の applyLayout はマスターを自動設定するべきではありません")
+
+        windowManager.isSpaceSwitching = false
+    }
+
+    /// 仮想スペースごとに保存されたモードを復元できることをテスト
+    func testRestoresSavedModeForSpace() async throws {
+        let windowManager = WindowManager()
+        windowManager.isTestingMode = true
+
+        let controller = FocusModeController(windowManager: windowManager)
+        windowManager.setFocusControllerForTesting(controller)
+
+        AppSettings.shared.setMode(.float, forSpaceKey: "space-float")
+
+        windowManager.isSpaceSwitching = true
+        windowManager.restoreModeForTesting(spaceKey: "space-float")
+
+        XCTAssertEqual(windowManager.currentMode, .float, "保存済みスペースへ移動したら、そのスペースの Float Mode が復元されるべきです")
+
+        windowManager.isSpaceSwitching = false
+    }
+
+    /// 未設定の仮想スペースへ移動した場合は OFF に戻ることをテスト
+    func testUnconfiguredSpaceRestoresOffMode() async throws {
+        let windowManager = WindowManager()
+        windowManager.isTestingMode = true
+
+        let controller = FocusModeController(windowManager: windowManager)
+        windowManager.setFocusControllerForTesting(controller)
+
+        windowManager.switchMode(to: .focus)
+        XCTAssertEqual(windowManager.currentMode, .focus)
+
+        windowManager.isSpaceSwitching = true
+        windowManager.restoreModeForTesting(spaceKey: "space-without-setting")
+
+        XCTAssertEqual(windowManager.currentMode, .off, "未設定スペースでは直前スペースの Focus/Float Mode を引き継がないべきです")
 
         windowManager.isSpaceSwitching = false
     }

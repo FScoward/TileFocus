@@ -113,7 +113,7 @@ final class DimmingManager {
             return
         }
         
-        let axFrame = focusedWindow.frameBeforeStaging ?? focusedWindow.frame
+        let axFrame = currentAXFrame(for: focusedWindow)
         let screenManager = ScreenManager()
         let appKitFrame = screenManager.axToAppKit(axFrame)
         
@@ -130,6 +130,19 @@ final class DimmingManager {
             )
             window.setTargetRect(localRect)
         }
+    }
+
+    private func currentAXFrame(for window: ManagedWindow) -> CGRect {
+        if window.state == .staged, let frameBeforeStaging = window.frameBeforeStaging {
+            return frameBeforeStaging
+        }
+
+        if let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title),
+           let frame = AccessibilityHelper.getFrame(of: axWindow) {
+            return frame
+        }
+
+        return window.frameBeforeStaging ?? window.frame
     }
 }
 

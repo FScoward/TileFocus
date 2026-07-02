@@ -151,6 +151,7 @@ final class WindowManager: ObservableObject {
     private var masterWindowIDsBySpace: [String: String] = [:]
     private var tilingGuardGeneration: UInt64 = 0
     private var isBatchingLayoutStateUpdate = false
+    private var isRestoringModeForSpace = false
     var isSpaceSwitching: Bool = false
     #if DEBUG
     var isTestingMode: Bool = false
@@ -213,6 +214,7 @@ final class WindowManager: ObservableObject {
                 // 仮想スペース切り替え直後はOS側の状態が不安定なため、0.4 秒のディレイを設ける
                 try? await Task.sleep(nanoseconds: 400_000_000) // 0.4秒待機
                 Log.info("WindowManager", "仮想デスクトップの切り替えを検知しました。ウィンドウリストを再構成します。")
+                self.restoreModeForActiveSpace()
                 self.refreshWindowList()
                 self.scheduleWindowListRefreshRetries(reason: "spaceChanged", delays: [0.4, 1.0])
                 DimmingManager.shared.updateFocusedWindowRect()
@@ -242,6 +244,7 @@ final class WindowManager: ObservableObject {
             // 同じモードなら OFF に切り替え
             deactivateCurrentMode()
             currentMode = .off
+            saveCurrentModeForActiveSpace()
             DimmingManager.shared.updateDimmingState()
             return
         }
@@ -260,21 +263,67 @@ final class WindowManager: ObservableObject {
             focusController?.activate()
         }
 
+        saveCurrentModeForActiveSpace()
         DimmingManager.shared.updateDimmingState()
 
         print("[WindowManager] モード切り替え: \(newMode.displayName)")
     }
 
-    private func deactivateCurrentMode() {
+    private func deactivateCurrentMode(restoreWindows: Bool = true) {
         switch currentMode {
         case .off:
             break
         case .tiling:
             tilingController?.deactivate()
         case .focus, .float:
-            focusController?.deactivate()
+            focusController?.deactivate(restoreWindows: restoreWindows)
         }
         DimmingManager.shared.updateDimmingState()
+    }
+
+    private func saveCurrentModeForActiveSpace() {
+        guard !isRestoringModeForSpace else { return }
+        guard let key = activeSpaceKey() else {
+            Log.warn("WindowManager", "saveCurrentModeForActiveSpace: key が取得できないため保存をスキップします")
+            return
+        }
+        AppSettings.shared.setMode(currentMode, forSpaceKey: key)
+        Log.info("WindowManager", "アクティブスペースのモードを保存: key=\(key) mode=\(currentMode.displayName)")
+    }
+
+    private func restoreModeForActiveSpace() {
+        guard let key = activeSpaceKey() else {
+            Log.warn("WindowManager", "restoreModeForActiveSpace: key が取得できないため復元をスキップします")
+            return
+        }
+        restoreMode(forSpaceKey: key)
+    }
+
+    private func restoreMode(forSpaceKey key: String) {
+        let savedMode = AppSettings.shared.mode(forSpaceKey: key) ?? .off
+        guard savedMode != currentMode else {
+            Log.debug("WindowManager", "スペースの保存モードは現在と同じです: key=\(key) mode=\(savedMode.displayName)")
+            return
+        }
+
+        isRestoringModeForSpace = true
+        defer { isRestoringModeForSpace = false }
+
+        Log.info("WindowManager", "アクティブスペースのモードを復元: key=\(key) \(currentMode.displayName) → \(savedMode.displayName)")
+        deactivateCurrentMode(restoreWindows: false)
+        currentMode = savedMode
+
+        switch savedMode {
+        case .off:
+            break
+        case .tiling:
+            tilingController?.activate()
+        case .focus, .float:
+            focusController?.activate()
+        }
+
+        DimmingManager.shared.updateDimmingState()
+        objectWillChange.send()
     }
 
     // MARK: - Tiling In Progress Flag
@@ -665,6 +714,12 @@ final class WindowManager: ObservableObject {
         return NSScreen.main ?? NSScreen.screens.first
     }
 
+    private func activeSpaceKey() -> String? {
+        guard let activeScreen = getActiveScreen() else { return nil }
+        let key = AccessibilityHelper.getActiveSpaceUUID(for: activeScreen) ?? activeScreen.identifier
+        return key.isEmpty ? nil : key
+    }
+
     /// 現在のアクティブなスペースに保存されているマスターウィンドウIDを復元する
     private func restoreMasterWindowIDForActiveSpace() {
         guard let activeScreen = getActiveScreen() else { return }
@@ -893,6 +948,10 @@ final class WindowManager: ObservableObject {
     /// テスト用に FocusModeController を直接設定する
     func setFocusControllerForTesting(_ controller: FocusModeController) {
         self.focusController = controller
+    }
+
+    func restoreModeForTesting(spaceKey: String) {
+        restoreMode(forSpaceKey: spaceKey)
     }
     #endif
 

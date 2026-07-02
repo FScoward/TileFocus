@@ -89,7 +89,7 @@ final class FocusModeController {
         Log.info(Self.tag, "activate() 完了 - NSWorkspace / マウスクリック 監視開始")
     }
 
-    func deactivate() {
+    func deactivate(restoreWindows: Bool = true) {
         Log.info(Self.tag, "deactivate()")
         updateWorkItem?.cancel()
         updateWorkItem = nil
@@ -110,6 +110,11 @@ final class FocusModeController {
         
         // 上部バーを非表示にする
         topBarController.hide()
+
+        guard restoreWindows else {
+            Log.info(Self.tag, "deactivate(): スペース切り替え中のためウィンドウ復帰をスキップ")
+            return
+        }
         
         // すべての格納ウィンドウを画面上に復帰させる
         if let windowManager {

@@ -46,6 +46,7 @@ final class AppSettings: ObservableObject {
         static let stageMethod = "stageMethod"
         static let mainWidthRatio = "mainWidthRatio"
         static let focusStylesByMonitor = "focusStylesByMonitor"
+        static let modesBySpace = "modesBySpace"
         static let crownSwapTrigger = "crownSwapTrigger"
         static let floatModeWidthRatio = "floatModeWidthRatio"
         static let floatModeHeightRatio = "floatModeHeightRatio"
@@ -80,6 +81,11 @@ final class AppSettings: ObservableObject {
     /// モニターごとの Focus Style 設定
     @Published var focusStylesByMonitor: [String: String] {
         didSet { defaults.set(focusStylesByMonitor, forKey: Keys.focusStylesByMonitor) }
+    }
+
+    /// 仮想スペースごとのモード設定
+    @Published var modesBySpace: [String: String] {
+        didSet { defaults.set(modesBySpace, forKey: Keys.modesBySpace) }
     }
 
     /// 格納方法
@@ -140,6 +146,7 @@ final class AppSettings: ObservableObject {
         floatModeHeightRatio = savedFloatHeightRatio == 0 ? 0.55 : savedFloatHeightRatio
 
         focusStylesByMonitor = defaults.dictionary(forKey: Keys.focusStylesByMonitor) as? [String: String] ?? [:]
+        modesBySpace = defaults.dictionary(forKey: Keys.modesBySpace) as? [String: String] ?? [:]
 
         defaultMode = AppMode(
             rawValue: defaults.string(forKey: Keys.defaultMode) ?? ""
@@ -203,5 +210,15 @@ final class AppSettings: ObservableObject {
     func includeInAutoPlacement(identifier: String) {
         excludedAppIdentifiers.removeAll { $0 == identifier }
         excludedAppNamesByIdentifier.removeValue(forKey: identifier)
+    }
+
+    func mode(forSpaceKey key: String) -> AppMode? {
+        guard let raw = modesBySpace[key] else { return nil }
+        return AppMode(rawValue: raw)
+    }
+
+    func setMode(_ mode: AppMode, forSpaceKey key: String) {
+        guard !key.isEmpty else { return }
+        modesBySpace[key] = mode.rawValue
     }
 }
