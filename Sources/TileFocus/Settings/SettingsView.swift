@@ -52,6 +52,8 @@ private struct GeneralSettingsTab: View {
                         Text(method.displayName).tag(method)
                     }
                 }
+
+                Toggle("Float Modeで上部ホバーを常に表示", isOn: $settings.alwaysShowStageTopBar)
             }
 
             Section("王冠（マスターウィンドウ）の切り替え") {

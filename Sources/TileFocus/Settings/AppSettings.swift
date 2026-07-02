@@ -52,6 +52,7 @@ final class AppSettings: ObservableObject {
         static let floatModeHeightRatio = "floatModeHeightRatio"
         static let isDimmingEnabled = "isDimmingEnabled"
         static let dimmingOpacity = "dimmingOpacity"
+        static let alwaysShowStageTopBar = "alwaysShowStageTopBar"
         static let excludedAppIdentifiers = "excludedAppIdentifiers"
         static let excludedAppNamesByIdentifier = "excludedAppNamesByIdentifier"
     }
@@ -106,6 +107,11 @@ final class AppSettings: ObservableObject {
     /// 選択したウィンドウ以外を暗くする際の不透明度
     @Published var dimmingOpacity: Double {
         didSet { defaults.set(dimmingOpacity, forKey: Keys.dimmingOpacity) }
+    }
+
+    /// 上部ホバーを常に表示するかどうか
+    @Published var alwaysShowStageTopBar: Bool {
+        didSet { defaults.set(alwaysShowStageTopBar, forKey: Keys.alwaysShowStageTopBar) }
     }
 
     /// 自動配置の対象外にするアプリ識別子
@@ -178,6 +184,7 @@ final class AppSettings: ObservableObject {
 
         let savedDimmingOpacity = defaults.double(forKey: Keys.dimmingOpacity)
         dimmingOpacity = savedDimmingOpacity == 0 ? 0.3 : savedDimmingOpacity
+        alwaysShowStageTopBar = defaults.object(forKey: Keys.alwaysShowStageTopBar) as? Bool ?? false
 
         excludedAppIdentifiers = defaults.stringArray(forKey: Keys.excludedAppIdentifiers) ?? []
         excludedAppNamesByIdentifier = defaults.dictionary(forKey: Keys.excludedAppNamesByIdentifier) as? [String: String] ?? [:]

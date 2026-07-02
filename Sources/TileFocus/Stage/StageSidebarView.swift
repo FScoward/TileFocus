@@ -60,6 +60,7 @@ final class StageTopBarController: NSObject {
     private var panels: [NSScreen: StageTopBarPanel] = [:]
     private var collapseWorkItems: [NSScreen: DispatchWorkItem] = [:]
     private var windowStateCancellable: AnyCancellable?
+    private var settingsCancellable: AnyCancellable?
     
     private let barWidth: CGFloat = 620
     private let collapsedHeight: CGFloat = 4
@@ -91,17 +92,18 @@ final class StageTopBarController: NSObject {
         for screen in NSScreen.screens {
             let screenFrame = screen.visibleFrame
             let currentBarWidth = getBarWidth(for: screen, windowManager: windowManager)
+            let startsExpanded = shouldAlwaysShow(windowManager: windowManager)
             
             // 初期状態（隠れている状態: 下端が screenFrame.maxY - visibleOffset になる位置）
             let initialX = screenFrame.minX + (screenFrame.width - currentBarWidth) / 2
-            let initialY = screenFrame.maxY - visibleOffset
-            // 初期高さは collapsedHeight(4px)
-            let panelFrame = CGRect(x: initialX, y: initialY, width: currentBarWidth, height: collapsedHeight)
+            let initialHeight = startsExpanded ? preferredExpandedHeight(for: screen, windowManager: windowManager) : collapsedHeight
+            let initialY = startsExpanded ? (screenFrame.maxY - initialHeight) : (screenFrame.maxY - visibleOffset)
+            let panelFrame = CGRect(x: initialX, y: initialY, width: currentBarWidth, height: initialHeight)
             
             let panel = StageTopBarPanel(contentRect: panelFrame)
             
             // コンテナビューの作成
-            let container = StageTopBarContainerView(frame: CGRect(x: 0, y: 0, width: currentBarWidth, height: collapsedHeight))
+            let container = StageTopBarContainerView(frame: CGRect(x: 0, y: 0, width: currentBarWidth, height: initialHeight))
             container.autoresizingMask = [.width, .height]
             
             // NSVisualEffectView を作成して背景に設定（本物のすりガラス効果）
@@ -143,6 +145,12 @@ final class StageTopBarController: NSObject {
             container.onMouseExit = { [weak self, weak panel, weak windowManager] in
                 guard let self, let panel, let windowManager else { return }
                 Log.info("StageTopBarController", "mouseExited 検知")
+                guard !self.shouldAlwaysShow(windowManager: windowManager) else {
+                    Log.info("StageTopBarController", "常時表示設定が有効なため、バーを閉じません")
+                    windowManager.isStagedWindowsBarExpanded = true
+                    self.updatePanelCollapseState(collapsed: false, panel: panel, screen: screen, windowManager: windowManager)
+                    return
+                }
                 
                 // 誤検知やチャタリングを防ぐため、閉じる処理に 0.2 秒の遅延バッファを持たせる
                 self.collapseWorkItems[screen]?.cancel()
@@ -162,6 +170,8 @@ final class StageTopBarController: NSObject {
             panel.orderFrontRegardless()
         }
 
+        windowManager.isStagedWindowsBarExpanded = shouldAlwaysShow(windowManager: windowManager)
+
         windowStateCancellable = windowManager.objectWillChange.sink { [weak self, weak windowManager] _ in
             DispatchQueue.main.async { [weak self, weak windowManager] in
                 guard let self, let windowManager else { return }
@@ -170,11 +180,22 @@ final class StageTopBarController: NSObject {
                 }
             }
         }
+
+        settingsCancellable = AppSettings.shared.$alwaysShowStageTopBar
+            .receive(on: RunLoop.main)
+            .sink { [weak self, weak windowManager] alwaysShow in
+                guard let self, let windowManager else { return }
+                Task { @MainActor in
+                    self.setAlwaysShow(alwaysShow && windowManager.currentMode == .float, windowManager: windowManager)
+                }
+            }
     }
     
     func hide() {
         windowStateCancellable?.cancel()
         windowStateCancellable = nil
+        settingsCancellable?.cancel()
+        settingsCancellable = nil
 
         for workItem in collapseWorkItems.values {
             workItem.cancel()
@@ -188,12 +209,78 @@ final class StageTopBarController: NSObject {
     }
 
     @MainActor
+    private func setAlwaysShow(_ alwaysShow: Bool, windowManager: WindowManager) {
+        if alwaysShow {
+            for workItem in collapseWorkItems.values {
+                workItem.cancel()
+            }
+            collapseWorkItems.removeAll()
+            windowManager.isStagedWindowsBarExpanded = true
+            for (screen, panel) in panels {
+                updatePanelCollapseState(collapsed: false, panel: panel, screen: screen, windowManager: windowManager)
+            }
+        } else {
+            windowManager.isStagedWindowsBarExpanded = false
+            for (screen, panel) in panels {
+                updatePanelCollapseState(collapsed: true, panel: panel, screen: screen, windowManager: windowManager)
+            }
+        }
+    }
+
+    @MainActor
+    private func shouldAlwaysShow(windowManager: WindowManager) -> Bool {
+        AppSettings.shared.alwaysShowStageTopBar && windowManager.currentMode == .float
+    }
+
+    @MainActor
     private func refreshExpandedPanels(windowManager: WindowManager) {
         guard windowManager.isStagedWindowsBarExpanded else { return }
 
         for (screen, panel) in panels {
             updatePanelCollapseState(collapsed: false, panel: panel, screen: screen, windowManager: windowManager)
         }
+    }
+
+    @MainActor
+    private func preferredExpandedHeight(for screen: NSScreen, windowManager: WindowManager) -> CGFloat {
+        if windowManager.currentMode == .float {
+            return 64
+        }
+
+        // そのスクリーンに属するウィンドウ数を動的に取得して高さを計算
+        let wins = getWindowsForScreen(screen: screen, windowManager: windowManager)
+        let activeWins = wins.active
+        let stagedCount = wins.staged.count
+
+        // 各カラムの最大行数を計算
+        let focusStyle = windowManager.focusStyle(for: screen)
+        let split = getSplitWindows(activeWins: activeWins, focusStyle: focusStyle, masterWindowID: windowManager.masterWindow?.id)
+        let maxActiveRows = max(split.left.count, max(split.main.count, split.right.count))
+
+        // windowItem の実寸と列見出し、上下 padding に合わせて計算する
+        let activeRows = max(1, maxActiveRows)
+        let activeRowHeight = CGFloat(activeRows) * windowItemHeight
+        let activeGapHeight = CGFloat(max(0, activeRows - 1)) * windowItemRowSpacing
+        let activeHeight = activeRowHeight
+            + activeGapHeight
+            + sectionHeaderHeight
+            + sectionHeaderSpacing
+            + activeSectionVerticalPadding
+
+        // stagedCount がある場合は、外側 VStack の spacing、Divider、ラベル、グリッド、下 padding を加算
+        let stagedHeight: CGFloat
+        if stagedCount > 0 {
+            let stagedRows = Int(ceil(Double(stagedCount) / 4.0))
+            stagedHeight = stagedSectionChromeHeight
+                + CGFloat(stagedRows) * windowItemHeight
+                + CGFloat(max(0, stagedRows - 1)) * windowItemRowSpacing
+        } else {
+            stagedHeight = 0
+        }
+
+        // Focus Mode のときはレイアウト切り替えツールバーの高さ（34px）を追加
+        let toolbarHeight: CGFloat = (windowManager.currentMode == .focus) ? 34 : 0
+        return activeHeight + stagedHeight + toolbarHeight
     }
     
     @MainActor
@@ -205,43 +292,8 @@ final class StageTopBarController: NSObject {
         let targetHeight: CGFloat
         if collapsed {
             targetHeight = collapsedHeight
-        } else if windowManager.currentMode == .float {
-            targetHeight = 64
         } else {
-            // そのスクリーンに属するウィンドウ数を動的に取得して高さを計算
-            let wins = getWindowsForScreen(screen: screen, windowManager: windowManager)
-            let activeWins = wins.active
-            let stagedCount = wins.staged.count
-            
-            // 各カラムの最大行数を計算
-            let focusStyle = windowManager.focusStyle(for: screen)
-            let split = getSplitWindows(activeWins: activeWins, focusStyle: focusStyle, masterWindowID: windowManager.masterWindow?.id)
-            let maxActiveRows = max(split.left.count, max(split.main.count, split.right.count))
-            
-            // windowItem の実寸と列見出し、上下 padding に合わせて計算する
-            let activeRows = max(1, maxActiveRows)
-            let activeRowHeight = CGFloat(activeRows) * windowItemHeight
-            let activeGapHeight = CGFloat(max(0, activeRows - 1)) * windowItemRowSpacing
-            let activeHeight = activeRowHeight
-                + activeGapHeight
-                + sectionHeaderHeight
-                + sectionHeaderSpacing
-                + activeSectionVerticalPadding
-            
-            // stagedCount がある場合は、外側 VStack の spacing、Divider、ラベル、グリッド、下 padding を加算
-            let stagedHeight: CGFloat
-            if stagedCount > 0 {
-                let stagedRows = Int(ceil(Double(stagedCount) / 4.0))
-                stagedHeight = stagedSectionChromeHeight
-                    + CGFloat(stagedRows) * windowItemHeight
-                    + CGFloat(max(0, stagedRows - 1)) * windowItemRowSpacing
-            } else {
-                stagedHeight = 0
-            }
-            
-            // Focus Mode のときはレイアウト切り替えツールバーの高さ（34px）を追加
-            let toolbarHeight: CGFloat = (windowManager.currentMode == .focus) ? 34 : 0
-            targetHeight = activeHeight + stagedHeight + toolbarHeight
+            targetHeight = preferredExpandedHeight(for: screen, windowManager: windowManager)
         }
         
         let targetY = collapsed ? (screenFrame.maxY - visibleOffset) : (screenFrame.maxY - targetHeight)
