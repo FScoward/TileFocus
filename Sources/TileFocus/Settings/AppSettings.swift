@@ -1,6 +1,6 @@
 import Foundation
 
-/// 格納方法の定義
+/// お道具箱へしまう方法の定義
 enum StageMethod: String, CaseIterable, Identifiable {
     case offscreen
     case dock
@@ -8,8 +8,8 @@ enum StageMethod: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var displayName: String {
         switch self {
-        case .offscreen: return "画面外に退避（非推奨）"
-        case .dock: return "Dockにしまう（最小化）"
+        case .offscreen: return "画面外のお道具箱（非推奨）"
+        case .dock: return "Dock経由でお道具箱にしまう"
         }
     }
 }
@@ -91,7 +91,7 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(modesBySpace, forKey: Keys.modesBySpace) }
     }
 
-    /// 格納方法
+    /// お道具箱へしまう方法
     @Published var stageMethod: StageMethod {
         didSet { defaults.set(stageMethod.rawValue, forKey: Keys.stageMethod) }
     }

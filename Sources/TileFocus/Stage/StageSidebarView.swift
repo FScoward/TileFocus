@@ -63,14 +63,16 @@ final class StageTopBarController: NSObject {
     private var settingsCancellable: AnyCancellable?
     
     private let barWidth: CGFloat = 620
-    private let collapsedHeight: CGFloat = 4
-    private let visibleOffset: CGFloat = 8 // 隠れている時に画面内に露出させるピクセル数（ホバー検知用）
+    private let collapsedHeight: CGFloat = 22
+    private let visibleOffset: CGFloat = 22 // 隠れている時に画面内に露出させるピクセル数（ホバー検知用）
     private let windowItemHeight: CGFloat = 36
     private let windowItemRowSpacing: CGFloat = 6
     private let activeSectionVerticalPadding: CGFloat = 16
     private let sectionHeaderHeight: CGFloat = 10
     private let sectionHeaderSpacing: CGFloat = 6
     private let stagedSectionChromeHeight: CGFloat = 41
+    private let toolboxHandleHeight: CGFloat = 22
+    private let dropTargetReserveHeight: CGFloat = 36
     
     @MainActor
     private func getBarWidth(for screen: NSScreen, windowManager: WindowManager) -> CGFloat {
@@ -244,7 +246,7 @@ final class StageTopBarController: NSObject {
     @MainActor
     private func preferredExpandedHeight(for screen: NSScreen, windowManager: WindowManager) -> CGFloat {
         if windowManager.currentMode == .float {
-            return 64
+            return 64 + toolboxHandleHeight
         }
 
         // そのスクリーンに属するウィンドウ数を動的に取得して高さを計算
@@ -266,12 +268,14 @@ final class StageTopBarController: NSObject {
             + sectionHeaderHeight
             + sectionHeaderSpacing
             + activeSectionVerticalPadding
+            + dropTargetReserveHeight
 
         // stagedCount がある場合は、外側 VStack の spacing、Divider、ラベル、グリッド、下 padding を加算
         let stagedHeight: CGFloat
         if stagedCount > 0 {
             let stagedRows = Int(ceil(Double(stagedCount) / 4.0))
             stagedHeight = stagedSectionChromeHeight
+                + dropTargetReserveHeight
                 + CGFloat(stagedRows) * windowItemHeight
                 + CGFloat(max(0, stagedRows - 1)) * windowItemRowSpacing
         } else {
@@ -280,7 +284,7 @@ final class StageTopBarController: NSObject {
 
         // Focus Mode のときはレイアウト切り替えツールバーの高さ（34px）を追加
         let toolbarHeight: CGFloat = (windowManager.currentMode == .focus) ? 34 : 0
-        return activeHeight + stagedHeight + toolbarHeight
+        return activeHeight + stagedHeight + toolbarHeight + toolboxHandleHeight
     }
     
     @MainActor
@@ -357,6 +361,8 @@ struct StageTopBarView: View {
     @State private var dragTargetCol: Int = -1
     @State private var dragTargetRow: Int = -1
     @State private var dragOffset: CGSize = .zero
+    @State private var isDraggingToToolbox: Bool = false
+    @State private var isDraggingFromToolbox: Bool = false
     
     private let overlayManager = LayoutOverlayManager()
 
@@ -495,15 +501,25 @@ struct StageTopBarView: View {
                             }
                             .padding(.horizontal, 10)
                             .padding(.vertical, 8)
+
+                            if draggingWindowID != nil && dragStartCol != -1 {
+                                toolboxDropTarget
+                                    .padding(.horizontal, 10)
+                            }
                             
-                            // 格納中ウィンドウ
+                            // お道具箱にしまったウィンドウ
                             let staged = stagedTempWindows
                             if !staged.isEmpty {
                                 Divider()
                                     .padding(.horizontal, 10)
                                 
                                 VStack(alignment: .leading, spacing: 6) {
-                                    Text("格納中")
+                                    if draggingWindowID != nil && dragStartCol == -1 {
+                                        workbenchDropTarget
+                                            .padding(.horizontal, 10)
+                                    }
+
+                                    Label("お道具箱", systemImage: "archivebox.fill")
                                         .font(.system(size: 8, weight: .bold))
                                         .foregroundStyle(.secondary)
                                         .padding(.horizontal, 10)
@@ -611,11 +627,7 @@ struct StageTopBarView: View {
                 Spacer()
             }
             
-            // 下部中央のインジゲーター（ホバー時のヒント。非展開時も極小のガイド線として見える）
-            RoundedRectangle(cornerRadius: 1)
-                .fill(Color.secondary.opacity(windowManager.isStagedWindowsBarExpanded ? 0.35 : 0.12))
-                .frame(width: 40, height: 2)
-                .padding(.bottom, 1)
+            toolboxHandle
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.black.opacity(0.001))
@@ -641,12 +653,92 @@ struct StageTopBarView: View {
             if !expanded {
                 overlayManager.hideOverlays()
                 draggedWindow = nil
+                isDraggingToToolbox = false
+                isDraggingFromToolbox = false
             }
         }
         .onDisappear {
             overlayManager.hideOverlays()
             draggedWindow = nil
+            isDraggingToToolbox = false
+            isDraggingFromToolbox = false
         }
+    }
+
+    private var workbenchDropTarget: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isDraggingFromToolbox ? "rectangle.inset.filled" : "rectangle")
+                .font(.system(size: 10, weight: .semibold))
+            Text(isDraggingFromToolbox ? "ここで離すと戻ります" : "上へドラッグして作業台へ")
+                .font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(isDraggingFromToolbox ? Color.accentColor : Color.secondary)
+        .frame(maxWidth: .infinity)
+        .frame(height: 28)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(isDraggingFromToolbox ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(
+                    isDraggingFromToolbox ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.14),
+                    style: StrokeStyle(lineWidth: 0.8, dash: isDraggingFromToolbox ? [] : [4, 3])
+                )
+        )
+        .animation(.easeInOut(duration: 0.12), value: isDraggingFromToolbox)
+    }
+
+    private var toolboxDropTarget: some View {
+        HStack(spacing: 6) {
+            Image(systemName: isDraggingToToolbox ? "archivebox.fill" : "archivebox")
+                .font(.system(size: 10, weight: .semibold))
+            Text(isDraggingToToolbox ? "ここで離すとしまいます" : "下へドラッグしてお道具箱へ")
+                .font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(isDraggingToToolbox ? Color.accentColor : Color.secondary)
+        .frame(maxWidth: .infinity)
+        .frame(height: 28)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(isDraggingToToolbox ? Color.accentColor.opacity(0.14) : Color.secondary.opacity(0.08))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(
+                    isDraggingToToolbox ? Color.accentColor.opacity(0.35) : Color.secondary.opacity(0.14),
+                    style: StrokeStyle(lineWidth: 0.8, dash: isDraggingToToolbox ? [] : [4, 3])
+                )
+        )
+        .animation(.easeInOut(duration: 0.12), value: isDraggingToToolbox)
+    }
+
+    private var toolboxHandle: some View {
+        let count = windowManager.stagedWindows.count
+        let isExpanded = windowManager.isStagedWindowsBarExpanded
+
+        return HStack(spacing: 5) {
+            Image(systemName: count > 0 ? "archivebox.fill" : "archivebox")
+                .font(.system(size: 9, weight: .semibold))
+            if count > 0 {
+                Text("お道具箱 \(count)")
+                    .font(.system(size: 10, weight: .semibold))
+                    .monospacedDigit()
+            }
+        }
+        .foregroundStyle(count > 0 ? Color.accentColor : Color.secondary.opacity(0.75))
+        .padding(.horizontal, count > 0 ? 9 : 7)
+        .frame(height: 18)
+        .background(
+            Capsule()
+                .fill(count > 0 ? Color.accentColor.opacity(isExpanded ? 0.08 : 0.16) : Color.secondary.opacity(0.08))
+        )
+        .overlay(
+            Capsule()
+                .stroke(count > 0 ? Color.accentColor.opacity(0.25) : Color.secondary.opacity(0.12), lineWidth: 0.6)
+        )
+        .padding(.bottom, 2)
+        .help(count > 0 ? "お道具箱を開いて取り出す" : "お道具箱")
     }
 
     /// ドラッグ中のカードの位置を、マウス移動量に追随させる
@@ -712,12 +804,12 @@ struct StageTopBarView: View {
         
         // ウィンドウの物理的な画面位置を判定
         let positionLabel: String = {
-            if isStaged { return "格納" }
+            if isStaged { return "箱" }
             switch col {
             case 0: return "左"
             case 1: return "メイン"
             case 2: return "右"
-            default: return "格納"
+            default: return "箱"
             }
         }()
         
@@ -848,7 +940,7 @@ struct StageTopBarView: View {
             }
             .buttonStyle(.plain)
 
-            // 3. 右側: 表示/非表示トグルボタン
+            // 3. 右側: お道具箱へしまう/取り出すトグルボタン
             Button {
                 if isStaged {
                     windowManager.unstageWindow(window)
@@ -856,9 +948,9 @@ struct StageTopBarView: View {
                     windowManager.stageWindow(window)
                 }
             } label: {
-                Image(systemName: isStaged ? "eye.slash" : "eye.fill")
+                Image(systemName: isStaged ? "tray.and.arrow.up.fill" : "archivebox.fill")
                     .font(.system(size: 9))
-                    .foregroundStyle(isStaged ? Color.secondary.opacity(0.4) : Color.accentColor)
+                    .foregroundStyle(isStaged ? Color.secondary.opacity(0.65) : Color.accentColor)
                     .frame(width: 18, height: 18)
                     .background(
                         RoundedRectangle(cornerRadius: 3)
@@ -867,6 +959,7 @@ struct StageTopBarView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .help(isStaged ? "お道具箱から取り出す" : "お道具箱にしまう")
         }
         .background(
             ZStack {
@@ -951,10 +1044,13 @@ struct StageTopBarView: View {
                     
                     dragOffset = value.translation
                     
-                    guard dragStartCol != -1 else { return }
-                    
                     let colWidth: CGFloat = 152
                     let rowHeight: CGFloat = 36
+
+                    if dragStartCol == -1 {
+                        isDraggingFromToolbox = value.translation.height < -rowHeight * 1.2
+                        return
+                    }
                     
                     let deltaCol = Int(round(value.translation.width / colWidth))
                     let deltaRow = Int(round(value.translation.height / rowHeight))
@@ -981,6 +1077,15 @@ struct StageTopBarView: View {
                         columnCount: colCount,
                         isSameColumn: targetCol == dragStartCol
                     )
+                    let wantsToolboxDrop = targetRow > maxRow && value.translation.height > rowHeight * 1.4
+                    isDraggingToToolbox = wantsToolboxDrop
+                    if wantsToolboxDrop {
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            dragTargetCol = -1
+                            dragTargetRow = -1
+                        }
+                        return
+                    }
                     let finalTargetRow = min(maxRow, targetRow)
                     
                     if targetCol != dragTargetCol || finalTargetRow != dragTargetRow {
@@ -993,7 +1098,11 @@ struct StageTopBarView: View {
                 .onEnded { value in
                     Log.info("StageTopBarView", "DragGesture onEnded: start=(\(dragStartCol),\(dragStartRow)), target=(\(dragTargetCol),\(dragTargetRow))")
                     
-                    if dragStartCol != -1 && dragTargetCol != -1 && (dragStartCol != dragTargetCol || dragStartRow != dragTargetRow) {
+                    if isDraggingToToolbox && dragStartCol != -1 {
+                        windowManager.stageWindow(window)
+                    } else if isDraggingFromToolbox && dragStartCol == -1 {
+                        windowManager.unstageWindow(window)
+                    } else if dragStartCol != -1 && dragTargetCol != -1 && (dragStartCol != dragTargetCol || dragStartRow != dragTargetRow) {
                         let active = tempWindows.filter { win in
                             !windowManager.stagedWindows.contains(where: { $0.id == win.id })
                         }
@@ -1062,6 +1171,8 @@ struct StageTopBarView: View {
                     dragTargetRow = -1
                     dragOffset = .zero
                     draggedWindow = nil
+                    isDraggingToToolbox = false
+                    isDraggingFromToolbox = false
                 }
         )
     }
@@ -1183,11 +1294,11 @@ struct StageTopBarView: View {
                     }
             }
             
-            // 格納状態・表示トグルバッジ (右下)
+            // お道具箱への収納状態・取り出しトグルバッジ (右下)
             if isHovered || isStaged {
-                Image(systemName: isStaged ? "eye.slash" : "eye.fill")
+                Image(systemName: isStaged ? "tray.and.arrow.up.fill" : "archivebox.fill")
                     .font(.system(size: 8))
-                    .foregroundStyle(isStaged ? Color.secondary.opacity(0.6) : Color.accentColor)
+                    .foregroundStyle(isStaged ? Color.secondary.opacity(0.75) : Color.accentColor)
                     .frame(width: 14, height: 14)
                     .background(Circle().fill(Color.black.opacity(0.6)))
                     .shadow(color: .black.opacity(0.15), radius: 1.5, x: 0, y: 1)
@@ -1241,7 +1352,7 @@ struct StageTopBarView: View {
             Button(isMaster ? "マスター（王冠）を解除" : "マスター（王冠）に設定") {
                 windowManager.setMasterWindow(to: window.id)
             }
-            Button(isStaged ? "画面に復帰" : "画面から格納") {
+            Button(isStaged ? "お道具箱から取り出す" : "お道具箱にしまう") {
                 if isStaged {
                     windowManager.unstageWindow(window)
                 } else {

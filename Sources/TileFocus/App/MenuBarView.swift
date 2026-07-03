@@ -28,7 +28,7 @@ struct MenuBarView: View {
                 Divider()
             }
 
-            // 格納ウィンドウ一覧（Phase 3 で充実予定）
+            // お道具箱にしまったウィンドウ一覧
             if !windowManager.stagedWindows.isEmpty {
                 stagedWindowsSection
                 Divider()
@@ -181,7 +181,7 @@ struct MenuBarView: View {
 
     private var stagedWindowsSection: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("格納中 (\(windowManager.stagedWindows.count))")
+            Label("お道具箱 (\(windowManager.stagedWindows.count))", systemImage: "archivebox.fill")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 12)
@@ -192,12 +192,12 @@ struct MenuBarView: View {
                     windowManager.unstageWindow(window)
                 } label: {
                     HStack {
-                        Image(systemName: "app.badge")
+                        Image(systemName: "tray.and.arrow.up.fill")
                             .frame(width: 16)
                         Text(window.title.isEmpty ? window.appName : window.title)
                             .lineLimit(1)
                         Spacer()
-                        Text("復帰")
+                        Text("取り出す")
                             .font(.caption)
                             .foregroundStyle(.blue)
                     }
@@ -322,9 +322,9 @@ struct MenuBarView: View {
                 windowManager.stageFocusedWindow()
             } label: {
                 HStack {
-                    Image(systemName: "arrow.left.to.line")
+                    Image(systemName: "archivebox.fill")
                         .frame(width: 16)
-                    Text("フォーカスウィンドウを格納")
+                    Text("フォーカスウィンドウをしまう")
                     Spacer()
                 }
             }
@@ -338,9 +338,9 @@ struct MenuBarView: View {
                 windowManager.unstageAllWindows()
             } label: {
                 HStack {
-                    Image(systemName: "arrow.uturn.right")
+                    Image(systemName: "tray.and.arrow.up.fill")
                         .frame(width: 16)
-                    Text("格納ウィンドウを全復帰")
+                    Text("お道具箱から全て取り出す")
                     Spacer()
                     Text("⌃⌘R")
                         .font(.caption)
