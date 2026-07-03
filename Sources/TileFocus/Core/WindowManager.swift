@@ -147,6 +147,7 @@ final class WindowManager: ObservableObject {
     private var workspaceObservers: [NSObjectProtocol] = []
     private var closedWindowReconciliationTimer: Timer?
     private var windowListRefreshRetryGeneration: UInt64 = 0
+    private var isApplyingRememberedArrangement = false
     /// 仮想スペースUUID（またはモニターID）ごとのマスターウィンドウIDの記憶
     private var masterWindowIDsBySpace: [String: String] = [:]
     private var tilingGuardGeneration: UInt64 = 0
@@ -532,6 +533,75 @@ final class WindowManager: ObservableObject {
     func requestFocusLayoutUpdate() {
         guard currentMode == .focus || currentMode == .float else { return }
         focusController?.scheduleLayoutUpdate()
+    }
+
+    @discardableResult
+    func rememberCurrentArrangement() -> Bool {
+        syncActualFrames()
+        let visibleWindows = managedWindows.filter { $0.state != .staged }
+        guard !visibleWindows.isEmpty else {
+            Log.warn("WindowManager", "配置記憶: 対象ウィンドウがないため保存をスキップ")
+            return false
+        }
+
+        let snapshot = WindowArrangementSnapshot(
+            name: visibleWindows.map { $0.appName }.joined(separator: " + "),
+            mode: currentMode,
+            windows: visibleWindows
+        )
+        AppSettings.shared.rememberWindowArrangement(snapshot)
+        Log.info("WindowManager", "配置記憶を保存: key=\(snapshot.layoutKey) windows=\(visibleWindows.count)")
+        return true
+    }
+
+    @discardableResult
+    func applyRememberedArrangementIfAvailable() -> Bool {
+        guard AppSettings.shared.isArrangementMemoryEnabled else { return false }
+        guard !isApplyingRememberedArrangement else { return false }
+        guard !isSpaceSwitching else { return false }
+
+        let visibleWindows = managedWindows.filter { $0.state != .staged }
+        guard let snapshot = AppSettings.shared.rememberedArrangement(for: visibleWindows, mode: currentMode) else {
+            return false
+        }
+
+        isApplyingRememberedArrangement = true
+        defer { isApplyingRememberedArrangement = false }
+
+        var windowsBySignature = Dictionary(grouping: visibleWindows, by: WindowArrangementSnapshot.signature(for:))
+        for key in windowsBySignature.keys {
+            windowsBySignature[key]?.sort { lhs, rhs in
+                if lhs.appName != rhs.appName { return lhs.appName < rhs.appName }
+                return lhs.title < rhs.title
+            }
+        }
+
+        var appliedFrames: [(id: String, frame: CGRect)] = []
+        setTilingInProgress(true)
+
+        for placement in snapshot.placements {
+            guard var matchingWindows = windowsBySignature[placement.signature],
+                  !matchingWindows.isEmpty else {
+                continue
+            }
+            let window = matchingWindows.removeFirst()
+            windowsBySignature[placement.signature] = matchingWindows
+
+            guard let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) else {
+                Log.warn("WindowManager", "配置記憶: AXウィンドウが見つからないためスキップ: \(window.appName) - \(window.title)")
+                continue
+            }
+
+            let targetFrame = placement.frame.cgRect
+            let success = AccessibilityHelper.moveAndResize(window: axWindow, to: targetFrame.origin, size: targetFrame.size)
+            setResizeFailed(id: window.id, failed: !success)
+            appliedFrames.append((id: window.id, frame: AccessibilityHelper.getFrame(of: axWindow) ?? targetFrame))
+        }
+
+        updateFrames(appliedFrames)
+        finishTilingInProgressAfterWindowSettles()
+        Log.info("WindowManager", "配置記憶を適用: \(snapshot.name) applied=\(appliedFrames.count)")
+        return !appliedFrames.isEmpty
     }
 
     /// 全格納ウィンドウを復帰

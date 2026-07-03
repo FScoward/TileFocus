@@ -91,6 +91,11 @@ final class TilingModeController {
             return
         }
 
+        if windowManager.applyRememberedArrangementIfAvailable() {
+            Log.info(Self.tag, "記憶済み配置を適用したため通常タイリングをスキップ")
+            return
+        }
+
         // NSScreen.screens の順序の揺らぎを防ぐため物理座標でソート
         let screens = NSScreen.screens.sorted { s1, s2 in
             if s1.frame.origin.x != s2.frame.origin.x {

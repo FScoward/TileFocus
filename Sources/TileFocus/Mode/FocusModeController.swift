@@ -456,6 +456,12 @@ final class FocusModeController {
             Log.debug(Self.tag, "applyLayout: スペース切り替え中のためスキップ")
             return
         }
+
+        if windowManager.applyRememberedArrangementIfAvailable() {
+            Log.info(Self.tag, "記憶済み配置を適用したため通常レイアウトをスキップ")
+            DimmingManager.shared.updateFocusedWindowRect()
+            return
+        }
         
         if windowManager.currentMode == .float {
             applyFloatLayout()
