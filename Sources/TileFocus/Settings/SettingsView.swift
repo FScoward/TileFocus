@@ -85,6 +85,8 @@ private struct GeneralSettingsTab: View {
                         Text(trigger.displayName).tag(trigger)
                     }
                 }
+
+                Toggle("Alt+Tabで王冠候補を選択", isOn: $settings.isAltTabCrownSelectionEnabled)
             }
 
             Section("フォーカス（遮光機能）") {

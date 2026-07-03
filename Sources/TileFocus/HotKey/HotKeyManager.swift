@@ -12,6 +12,7 @@ import HotKey
 /// - ⌃⌘R  : 格納ウィンドウを全復帰
 /// - ⌃⌘→ : 次のレイアウトプリセット
 /// - ⌃⌘← : 前のレイアウトプリセット
+/// - ⌥Tab / ⌥⇧Tab : 王冠（マスターウィンドウ）を次/前のウィンドウへ移動
 final class HotKeyManager {
 
     // MARK: - Dependencies
@@ -21,6 +22,7 @@ final class HotKeyManager {
     // MARK: - HotKey References（強参照を保持）
 
     private var hotKeys: [HotKey] = []
+    private var eventMonitors: [Any] = []
 
     // MARK: - Init
 
@@ -75,13 +77,64 @@ final class HotKeyManager {
             Task { @MainActor in self?.windowManager?.promoteCurrentWindowToMaster() }
         }
 
-        hotKeys = [focusHK, floatHK, stageHK, restoreHK, nextLayoutHK, prevLayoutHK, masterHK]
+        // 王冠を次のウィンドウへ移動: Option+Tab
+        let nextCrownHK = HotKey(key: Key.tab, modifiers: NSEvent.ModifierFlags([.option]))
+        nextCrownHK.keyDownHandler = { [weak self] in
+            Task { @MainActor in
+                guard AppSettings.shared.isAltTabCrownSelectionEnabled else { return }
+                self?.windowManager?.cyclePendingMasterWindow(forward: true)
+            }
+        }
+
+        // 王冠を前のウィンドウへ移動: Option+Shift+Tab
+        let previousCrownHK = HotKey(key: Key.tab, modifiers: NSEvent.ModifierFlags([.option, .shift]))
+        previousCrownHK.keyDownHandler = { [weak self] in
+            Task { @MainActor in
+                guard AppSettings.shared.isAltTabCrownSelectionEnabled else { return }
+                self?.windowManager?.cyclePendingMasterWindow(forward: false)
+            }
+        }
+
+        let globalFlagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
+            self?.handleFlagsChanged(event)
+        }
+        let localFlagsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
+            self?.handleFlagsChanged(event)
+            return event
+        }
+
+        hotKeys = [
+            focusHK,
+            floatHK,
+            stageHK,
+            restoreHK,
+            nextLayoutHK,
+            prevLayoutHK,
+            masterHK,
+            nextCrownHK,
+            previousCrownHK
+        ]
+        eventMonitors = [globalFlagsMonitor, localFlagsMonitor].compactMap { $0 }
         print("[HotKeyManager] \(hotKeys.count) 個のホットキーを登録")
     }
 
     func unregisterAll() {
         hotKeys.removeAll()
+        for monitor in eventMonitors {
+            NSEvent.removeMonitor(monitor)
+        }
+        eventMonitors.removeAll()
+    }
+
+    private func handleFlagsChanged(_ event: NSEvent) {
+        guard !event.modifierFlags.contains(.option) else { return }
+        Task { @MainActor in
+            guard AppSettings.shared.isAltTabCrownSelectionEnabled else {
+                self.windowManager?.cancelPendingMasterWindow()
+                return
+            }
+            self.windowManager?.commitPendingMasterWindow()
+        }
     }
 
 }
-

@@ -48,6 +48,7 @@ final class AppSettings: ObservableObject {
         static let focusStylesByMonitor = "focusStylesByMonitor"
         static let modesBySpace = "modesBySpace"
         static let crownSwapTrigger = "crownSwapTrigger"
+        static let isAltTabCrownSelectionEnabled = "isAltTabCrownSelectionEnabled"
         static let floatModeWidthRatio = "floatModeWidthRatio"
         static let floatModeHeightRatio = "floatModeHeightRatio"
         static let isDimmingEnabled = "isDimmingEnabled"
@@ -99,6 +100,11 @@ final class AppSettings: ObservableObject {
     /// 王冠の切り替え方法
     @Published var crownSwapTrigger: CrownSwapTrigger {
         didSet { defaults.set(crownSwapTrigger.rawValue, forKey: Keys.crownSwapTrigger) }
+    }
+
+    /// Alt+Tab で王冠の移動先候補を選択するかどうか
+    @Published var isAltTabCrownSelectionEnabled: Bool {
+        didSet { defaults.set(isAltTabCrownSelectionEnabled, forKey: Keys.isAltTabCrownSelectionEnabled) }
     }
 
     /// 選択したウィンドウ以外を暗くするかどうか (Dimming)
@@ -191,6 +197,7 @@ final class AppSettings: ObservableObject {
         crownSwapTrigger = CrownSwapTrigger(
             rawValue: defaults.string(forKey: Keys.crownSwapTrigger) ?? ""
         ) ?? .clickOnly
+        isAltTabCrownSelectionEnabled = defaults.object(forKey: Keys.isAltTabCrownSelectionEnabled) as? Bool ?? true
 
         isDimmingEnabled = defaults.object(forKey: Keys.isDimmingEnabled) as? Bool ?? false
 

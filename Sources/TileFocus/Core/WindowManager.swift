@@ -47,6 +47,11 @@ final class WindowManager: ObservableObject {
         }
     }
 
+    /// Alt+Tab 操作中に王冠の移動先候補として選択されているウィンドウ ID
+    @Published private(set) var pendingCrownWindowID: String?
+
+    private var crownCandidateOrder: [String] = []
+
     /// ユーザーがドラッグ＆ドロップで並べ替えたウィンドウIDの順序
     @Published var customWindowOrder: [String] = [] {
         didSet {
@@ -502,6 +507,94 @@ final class WindowManager: ObservableObject {
            let axWindow = AccessibilityHelper.findWindow(for: window.pid, windowID: window.windowID, title: window.title) {
             AccessibilityHelper.focus(window: axWindow)
         }
+    }
+
+    /// Focus/Float Mode で王冠（マスターウィンドウ）の移動先候補を次/前の表示中ウィンドウへ動かす。
+    func cyclePendingMasterWindow(forward: Bool = true) {
+        guard AppSettings.shared.isAltTabCrownSelectionEnabled else {
+            cancelPendingMasterWindow()
+            Log.debug("WindowManager", "cyclePendingMasterWindow: Alt+Tab 王冠選択がOFFのためスキップ")
+            return
+        }
+        guard currentMode == .focus || currentMode == .float else {
+            Log.warn("WindowManager", "cyclePendingMasterWindow: Focus/Float Mode でないためスキップ")
+            return
+        }
+
+        let visibleManagedWindowIDs = managedWindows
+            .filter { $0.state != .staged }
+            .map(\.id)
+        let visibleWindowIDSet = Set(visibleManagedWindowIDs)
+        let orderedCandidateIDs = crownCandidateOrder.filter { visibleWindowIDSet.contains($0) }
+        let visibleWindowIDs = orderedCandidateIDs.isEmpty ? visibleManagedWindowIDs : orderedCandidateIDs
+
+        guard let nextID = Self.nextMasterWindowID(
+            in: visibleWindowIDs,
+            currentMasterID: pendingCrownWindowID ?? masterWindowID,
+            focusedWindowID: focusedWindowID,
+            forward: forward
+        ) else {
+            Log.warn("WindowManager", "cyclePendingMasterWindow: 王冠候補がないためスキップ")
+            return
+        }
+
+        Log.info("WindowManager", "cyclePendingMasterWindow \(forward ? "next" : "previous"): pending=\(pendingCrownWindowID ?? "nil") master=\(masterWindowID ?? "nil") → \(nextID)")
+        pendingCrownWindowID = nextID
+    }
+
+    func updateCrownCandidateOrder(_ windowIDs: [String]) {
+        let uniqueIDs = windowIDs.reduce(into: [String]()) { result, id in
+            if !result.contains(id) {
+                result.append(id)
+            }
+        }
+        crownCandidateOrder = uniqueIDs
+        Log.debug("WindowManager", "updateCrownCandidateOrder: \(uniqueIDs)")
+    }
+
+    func clearCrownCandidateOrder() {
+        guard !crownCandidateOrder.isEmpty else { return }
+        crownCandidateOrder = []
+        Log.debug("WindowManager", "clearCrownCandidateOrder")
+    }
+
+    /// Alt+Tab の候補選択を確定し、選択中の候補へ王冠を移す。
+    func commitPendingMasterWindow() {
+        guard AppSettings.shared.isAltTabCrownSelectionEnabled else {
+            cancelPendingMasterWindow()
+            return
+        }
+        guard let windowID = pendingCrownWindowID else { return }
+        Log.info("WindowManager", "commitPendingMasterWindow: \(windowID)")
+        pendingCrownWindowID = nil
+        setMasterWindow(to: windowID)
+    }
+
+    func cancelPendingMasterWindow() {
+        guard pendingCrownWindowID != nil else { return }
+        Log.info("WindowManager", "cancelPendingMasterWindow")
+        pendingCrownWindowID = nil
+    }
+
+    static func nextMasterWindowID(
+        in orderedWindowIDs: [String],
+        currentMasterID: String?,
+        focusedWindowID: String?,
+        forward: Bool
+    ) -> String? {
+        guard !orderedWindowIDs.isEmpty else { return nil }
+        guard orderedWindowIDs.count > 1 else { return orderedWindowIDs.first }
+
+        let baseID = currentMasterID.flatMap { orderedWindowIDs.contains($0) ? $0 : nil }
+            ?? focusedWindowID.flatMap { orderedWindowIDs.contains($0) ? $0 : nil }
+
+        guard let baseID, let currentIndex = orderedWindowIDs.firstIndex(of: baseID) else {
+            return orderedWindowIDs.first
+        }
+
+        let offset = forward ? 1 : -1
+        let nextIndex = (currentIndex + offset + orderedWindowIDs.count) % orderedWindowIDs.count
+        return orderedWindowIDs[nextIndex]
     }
 
     /// 物理キーボードで Control + Shift が押されているかを確実に判定する

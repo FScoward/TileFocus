@@ -6,17 +6,20 @@ final class FocusModeControllerTests: XCTestCase {
     
     private var originalTrigger: CrownSwapTrigger = .clickOnly
     private var originalModesBySpace: [String: String] = [:]
+    private var originalAltTabCrownSelectionEnabled: Bool = true
     
     override func setUp() {
         super.setUp()
         // アプリケーション全体の設定だけ退避
         originalTrigger = AppSettings.shared.crownSwapTrigger
         originalModesBySpace = AppSettings.shared.modesBySpace
+        originalAltTabCrownSelectionEnabled = AppSettings.shared.isAltTabCrownSelectionEnabled
     }
     
     override func tearDown() {
         AppSettings.shared.crownSwapTrigger = originalTrigger
         AppSettings.shared.modesBySpace = originalModesBySpace
+        AppSettings.shared.isAltTabCrownSelectionEnabled = originalAltTabCrownSelectionEnabled
         super.tearDown()
     }
     
@@ -246,6 +249,132 @@ final class FocusModeControllerTests: XCTestCase {
         XCTAssertEqual(windowManager.managedWindows.first?.frame, originalFrame, "スペース切り替え中の移動通知でフレームキャッシュが上書きされるべきではありません")
 
         windowManager.isSpaceSwitching = false
+    }
+
+    func testNextMasterWindowIDCyclesForwardFromCurrentMaster() {
+        let ids = ["a", "b", "c"]
+
+        XCTAssertEqual(
+            WindowManager.nextMasterWindowID(
+                in: ids,
+                currentMasterID: "a",
+                focusedWindowID: nil,
+                forward: true
+            ),
+            "b"
+        )
+        XCTAssertEqual(
+            WindowManager.nextMasterWindowID(
+                in: ids,
+                currentMasterID: "c",
+                focusedWindowID: nil,
+                forward: true
+            ),
+            "a"
+        )
+    }
+
+    func testNextMasterWindowIDCyclesBackwardFromCurrentMaster() {
+        let ids = ["a", "b", "c"]
+
+        XCTAssertEqual(
+            WindowManager.nextMasterWindowID(
+                in: ids,
+                currentMasterID: "a",
+                focusedWindowID: nil,
+                forward: false
+            ),
+            "c"
+        )
+        XCTAssertEqual(
+            WindowManager.nextMasterWindowID(
+                in: ids,
+                currentMasterID: "b",
+                focusedWindowID: nil,
+                forward: false
+            ),
+            "a"
+        )
+    }
+
+    func testNextMasterWindowIDFallsBackToFocusedWindowWhenMasterIsMissing() {
+        let ids = ["a", "b", "c"]
+
+        XCTAssertEqual(
+            WindowManager.nextMasterWindowID(
+                in: ids,
+                currentMasterID: "missing",
+                focusedWindowID: "b",
+                forward: true
+            ),
+            "c"
+        )
+    }
+
+    func testPendingMasterSelectionDoesNotChangeMasterUntilCommit() async throws {
+        let windowManager = WindowManager()
+        windowManager.isTestingMode = true
+
+        AppSettings.shared.isAltTabCrownSelectionEnabled = true
+
+        let controller = FocusModeController(windowManager: windowManager)
+        windowManager.setFocusControllerForTesting(controller)
+
+        windowManager.switchMode(to: .focus)
+
+        let windowA = ManagedWindow(pid: 1001, windowID: 1, title: "AppA", appName: "AppA", bundleIdentifier: "com.AppA", frame: .zero)
+        let windowB = ManagedWindow(pid: 1002, windowID: 2, title: "AppB", appName: "AppB", bundleIdentifier: "com.AppB", frame: .zero)
+
+        windowManager.updateManagedWindows([windowA, windowB])
+        windowManager.setMasterWindow(to: windowA.id)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        windowManager.cyclePendingMasterWindow(forward: true)
+
+        XCTAssertEqual(windowManager.pendingCrownWindowID, windowB.id)
+        XCTAssertEqual(windowManager.masterWindowID, windowA.id, "Alt+Tabで候補選択中は王冠をまだ付け替えないべきです")
+
+        windowManager.commitPendingMasterWindow()
+
+        XCTAssertNil(windowManager.pendingCrownWindowID)
+        XCTAssertEqual(windowManager.masterWindowID, windowB.id, "Optionキーを離して確定した後だけ王冠が付け替わるべきです")
+    }
+
+    func testDisabledAltTabCrownSelectionDoesNotCreatePendingSelection() async throws {
+        let windowManager = WindowManager()
+        windowManager.isTestingMode = true
+
+        AppSettings.shared.isAltTabCrownSelectionEnabled = false
+
+        let controller = FocusModeController(windowManager: windowManager)
+        windowManager.setFocusControllerForTesting(controller)
+
+        windowManager.switchMode(to: .focus)
+
+        let windowA = ManagedWindow(pid: 1001, windowID: 1, title: "AppA", appName: "AppA", bundleIdentifier: "com.AppA", frame: .zero)
+        let windowB = ManagedWindow(pid: 1002, windowID: 2, title: "AppB", appName: "AppB", bundleIdentifier: "com.AppB", frame: .zero)
+
+        windowManager.updateManagedWindows([windowA, windowB])
+        windowManager.setMasterWindow(to: windowA.id)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        windowManager.cyclePendingMasterWindow(forward: true)
+
+        XCTAssertNil(windowManager.pendingCrownWindowID)
+        XCTAssertEqual(windowManager.masterWindowID, windowA.id, "設定OFF時はAlt+Tabで王冠候補を作らないべきです")
+    }
+
+    func testDisplayOrderedActiveWindowsMatchesHoverVisualOrder() {
+        let left = ManagedWindow(pid: 1001, windowID: 1, title: "Left", appName: "Left", bundleIdentifier: "com.Left", frame: .zero)
+        let main = ManagedWindow(pid: 1002, windowID: 2, title: "Main", appName: "Main", bundleIdentifier: "com.Main", frame: .zero)
+        let right = ManagedWindow(pid: 1003, windowID: 3, title: "Right", appName: "Right", bundleIdentifier: "com.Right", frame: .zero)
+        let split = SplitWindows(left: [left], main: [main], right: [right])
+
+        XCTAssertEqual(
+            displayOrderedActiveWindows(from: split).map(\.id),
+            [left.id, main.id, right.id],
+            "ホバー内の番号とAlt+Tab候補順は、画面上の左→メイン→右の表示順に揃えるべきです"
+        )
     }
 
     /// 仮想スペース切り替え中に予約済みレイアウトが実行されても、マスター自動割り当てなどの再配置前処理を行わないことをテスト

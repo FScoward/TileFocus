@@ -385,6 +385,19 @@ struct StageTopBarView: View {
         }
     }
 
+    private var activeDisplayWindows: [ManagedWindow] {
+        displayOrderedActiveWindows(from: splitTempWindows)
+    }
+
+    private var visibleCrownCandidateIDs: [String] {
+        activeDisplayWindows.map(\.id)
+    }
+
+    private func displayIndex(for window: ManagedWindow) -> Int {
+        let displayOrder = activeDisplayWindows + stagedTempWindows
+        return displayOrder.firstIndex(where: { $0.id == window.id }) ?? 0
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // 展開時のみコンテンツを表示
@@ -459,9 +472,7 @@ struct StageTopBarView: View {
                                         .font(.system(size: 8, weight: .bold))
                                         .foregroundStyle(.secondary)
                                     ForEach(split.left, id: \.id) { window in
-                                        if let index = tempWindows.firstIndex(where: { $0.id == window.id }) {
-                                            windowItem(window, index: index, col: 0, row: split.left.firstIndex(where: { $0.id == window.id }) ?? 0)
-                                        }
+                                        windowItem(window, index: displayIndex(for: window), col: 0, row: split.left.firstIndex(where: { $0.id == window.id }) ?? 0)
                                     }
                                     Spacer(minLength: 0)
                                 }
@@ -475,9 +486,7 @@ struct StageTopBarView: View {
                                         .font(.system(size: 8, weight: .bold))
                                         .foregroundStyle(.secondary)
                                     ForEach(split.main, id: \.id) { window in
-                                        if let index = tempWindows.firstIndex(where: { $0.id == window.id }) {
-                                            windowItem(window, index: index, col: 1, row: split.main.firstIndex(where: { $0.id == window.id }) ?? 0)
-                                        }
+                                        windowItem(window, index: displayIndex(for: window), col: 1, row: split.main.firstIndex(where: { $0.id == window.id }) ?? 0)
                                     }
                                     Spacer(minLength: 0)
                                 }
@@ -491,9 +500,7 @@ struct StageTopBarView: View {
                                         .font(.system(size: 8, weight: .bold))
                                         .foregroundStyle(.secondary)
                                     ForEach(split.right, id: \.id) { window in
-                                        if let index = tempWindows.firstIndex(where: { $0.id == window.id }) {
-                                            windowItem(window, index: index, col: 2, row: split.right.firstIndex(where: { $0.id == window.id }) ?? 0)
-                                        }
+                                        windowItem(window, index: displayIndex(for: window), col: 2, row: split.right.firstIndex(where: { $0.id == window.id }) ?? 0)
                                     }
                                     Spacer(minLength: 0)
                                 }
@@ -531,9 +538,7 @@ struct StageTopBarView: View {
                                         GridItem(.fixed(140), spacing: 6)
                                     ], spacing: 6) {
                                         ForEach(staged, id: \.id) { window in
-                                            if let index = tempWindows.firstIndex(where: { $0.id == window.id }) {
-                                                windowItem(window, index: index, col: -1, row: -1)
-                                            }
+                                            windowItem(window, index: displayIndex(for: window), col: -1, row: -1)
                                         }
                                     }
                                     .padding(.horizontal, 10)
@@ -636,11 +641,16 @@ struct StageTopBarView: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .onAppear {
             tempWindows = allWindowsForScreen
+            syncCrownCandidateOrderIfExpanded()
         }
         .onChange(of: allWindowsForScreen) { newValue in
             if draggingWindowID == nil {
                 tempWindows = newValue
+                syncCrownCandidateOrderIfExpanded()
             }
+        }
+        .onChange(of: tempWindows) { _ in
+            syncCrownCandidateOrderIfExpanded()
         }
         .onChange(of: draggedWindow) { newValue in
             if let _ = newValue {
@@ -650,6 +660,11 @@ struct StageTopBarView: View {
             }
         }
         .onChange(of: windowManager.isStagedWindowsBarExpanded) { expanded in
+            if expanded {
+                syncCrownCandidateOrderIfExpanded()
+            } else {
+                windowManager.clearCrownCandidateOrder()
+            }
             if !expanded {
                 overlayManager.hideOverlays()
                 draggedWindow = nil
@@ -658,11 +673,17 @@ struct StageTopBarView: View {
             }
         }
         .onDisappear {
+            windowManager.clearCrownCandidateOrder()
             overlayManager.hideOverlays()
             draggedWindow = nil
             isDraggingToToolbox = false
             isDraggingFromToolbox = false
         }
+    }
+
+    private func syncCrownCandidateOrderIfExpanded() {
+        guard windowManager.isStagedWindowsBarExpanded else { return }
+        windowManager.updateCrownCandidateOrder(visibleCrownCandidateIDs)
     }
 
     private var workbenchDropTarget: some View {
@@ -790,6 +811,7 @@ struct StageTopBarView: View {
         let isStaged = windowManager.stagedWindows.contains(where: { $0.id == window.id })
         // 現在マスター（メイン）に設定されているかどうか
         let isMaster = windowManager.masterWindow?.id == window.id
+        let isPendingCrown = windowManager.pendingCrownWindowID == window.id
 
         // 型推論エラーを避けるためにスタイル変数を切り出し
         let appLetterBg = isStaged ? Color.secondary.opacity(0.15) : Color.accentColor.opacity(0.15)
@@ -828,6 +850,15 @@ struct StageTopBarView: View {
             colors: [
                 Color.purple.opacity(0.18),
                 Color.blue.opacity(0.18)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        let pendingCrownGradient = LinearGradient(
+            colors: [
+                Color.blue.opacity(0.28),
+                Color.purple.opacity(0.22)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -871,6 +902,23 @@ struct StageTopBarView: View {
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
+
+        let pendingCrownBorderGradient = LinearGradient(
+            colors: [
+                Color.blue.opacity(0.8),
+                Color.purple.opacity(0.5)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        let itemBorderGradient = isPendingCrown ? pendingCrownBorderGradient : (isMaster ? masterBorderGradient : borderGradient)
+        let itemBorderWidth: CGFloat = isPendingCrown ? 1.6 : 0.8
+        let itemShadowColor = isPendingCrown ? Color.blue.opacity(0.22) : (isHovered ? (isMaster ? Color.yellow.opacity(0.12) : Color.purple.opacity(0.12)) : Color.clear)
+        let itemShadowRadius: CGFloat = isPendingCrown ? 5 : 3
+        let itemOuterFill = isPendingCrown ? Color.blue.opacity(0.08) : (isMaster ? Color.yellow.opacity(0.06) : Color.clear)
+        let itemOuterStroke = isPendingCrown ? Color.blue.opacity(0.35) : (isMaster ? Color.yellow.opacity(0.25) : Color.clear)
+        let indexBadgeColor = isPendingCrown ? Color.blue : (window.id == windowManager.focusedWindowID ? Color.yellow : Color.purple)
         
         let itemContent = HStack(spacing: 2) {
             // 1. 左側: ウィンドウ選択/アクティベートボタン（修飾キーによる挙動変化対応）
@@ -968,7 +1016,10 @@ struct StageTopBarView: View {
                     .fill(.ultraThinMaterial)
                 
                 // ホバー時・マスター時の有機的なリキッドグラデーション
-                if isMaster {
+                if isPendingCrown {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(pendingCrownGradient)
+                } else if isMaster {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(masterGradient)
                 } else if isHovered {
@@ -983,11 +1034,11 @@ struct StageTopBarView: View {
         .overlay(
             // ガラスの反射を感じさせるシャープなボーダー
             RoundedRectangle(cornerRadius: 6)
-                .stroke(isMaster ? masterBorderGradient : borderGradient, lineWidth: 0.8)
+                .stroke(itemBorderGradient, lineWidth: itemBorderWidth)
         )
         .shadow(
-            color: isHovered ? (isMaster ? Color.yellow.opacity(0.12) : Color.purple.opacity(0.12)) : Color.clear,
-            radius: 3,
+            color: itemShadowColor,
+            radius: itemShadowRadius,
             x: 0,
             y: 1.5
         )
@@ -1000,11 +1051,11 @@ struct StageTopBarView: View {
         .padding(.vertical, 2)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isMaster ? Color.yellow.opacity(0.06) : Color.clear)
+                .fill(itemOuterFill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(isMaster ? Color.yellow.opacity(0.25) : Color.clear, lineWidth: 0.5)
+                .stroke(itemOuterStroke, lineWidth: 0.5)
         )
         .frame(width: 140) // グリッドの各アイテム幅を140pxに固定
         .contentShape(Rectangle())
@@ -1022,7 +1073,7 @@ struct StageTopBarView: View {
                 .frame(width: 16, height: 16)
                 .background(
                     Circle()
-                        .fill(window.id == windowManager.focusedWindowID ? Color.yellow : Color.purple)
+                        .fill(indexBadgeColor)
                 )
                 .shadow(color: .black.opacity(0.18), radius: 2, x: 0, y: 1)
                 .offset(x: -4, y: -4)
@@ -1182,12 +1233,13 @@ struct StageTopBarView: View {
         let isStaged = windowManager.stagedWindows.contains(where: { $0.id == window.id })
         let isMaster = windowManager.masterWindow?.id == window.id
         let isFocused = windowManager.focusedWindowID == window.id
+        let isPendingCrown = windowManager.pendingCrownWindowID == window.id
         let isHovered = hoveredWindowID == window.id
         
         let borderGradient = LinearGradient(
             colors: [
-                isFocused ? Color.purple.opacity(0.8) : (isHovered ? Color.white.opacity(0.4) : Color.white.opacity(0.15)),
-                isFocused ? Color.blue.opacity(0.6) : Color.white.opacity(0.05),
+                isPendingCrown ? Color.blue.opacity(0.9) : (isFocused ? Color.purple.opacity(0.8) : (isHovered ? Color.white.opacity(0.4) : Color.white.opacity(0.15))),
+                isPendingCrown ? Color.purple.opacity(0.65) : (isFocused ? Color.blue.opacity(0.6) : Color.white.opacity(0.05)),
                 Color.black.opacity(0.1)
             ],
             startPoint: .topLeading,
@@ -1204,7 +1256,14 @@ struct StageTopBarView: View {
             RoundedRectangle(cornerRadius: 8)
                 .fill(.ultraThinMaterial)
             
-            if isMaster {
+            if isPendingCrown {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(LinearGradient(
+                        colors: [Color.blue.opacity(0.28), Color.purple.opacity(0.22)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ))
+            } else if isMaster {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(LinearGradient(
                         colors: [Color.yellow.opacity(0.18), Color.orange.opacity(0.08)],
@@ -1233,7 +1292,7 @@ struct StageTopBarView: View {
             itemBg
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
-                        .stroke(isMaster ? masterBorderGradient : borderGradient, lineWidth: isFocused ? 1.5 : 0.8)
+                        .stroke(isMaster && !isPendingCrown ? masterBorderGradient : borderGradient, lineWidth: isPendingCrown ? 1.8 : (isFocused ? 1.5 : 0.8))
                 )
             
             // アプリアイコン
@@ -1264,7 +1323,7 @@ struct StageTopBarView: View {
                 .frame(width: 14, height: 14)
                 .background(
                     Circle()
-                        .fill(isFocused ? Color.yellow : Color.purple)
+                        .fill(isPendingCrown ? Color.blue : (isFocused ? Color.yellow : Color.purple))
                 )
                 .shadow(color: .black.opacity(0.15), radius: 1.5, x: 0, y: 1)
                 .offset(x: -20, y: -20)
@@ -1456,6 +1515,10 @@ struct SplitWindows {
     var left: [ManagedWindow]
     var main: [ManagedWindow]
     var right: [ManagedWindow]
+}
+
+func displayOrderedActiveWindows(from split: SplitWindows) -> [ManagedWindow] {
+    split.left + split.main + split.right
 }
 
 @MainActor
