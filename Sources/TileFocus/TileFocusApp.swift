@@ -14,6 +14,7 @@ struct TileFocusApp: App {
             Image(systemName: "rectangle.3.group")
                 .symbolRenderingMode(.hierarchical)
         }
+        .menuBarExtraStyle(.window)
 
         // 設定ウィンドウ（Cmd+, で開く）
         Settings {

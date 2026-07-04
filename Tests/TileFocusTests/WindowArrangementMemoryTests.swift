@@ -68,6 +68,7 @@ final class WindowArrangementMemoryTests: XCTestCase {
 
         XCTAssertTrue(snapshot.matches(windows: relaunched, mode: .focus))
         XCTAssertFalse(snapshot.matches(windows: relaunched, mode: .float))
+        XCTAssertTrue(snapshot.matchesWindowCombination(windows: relaunched))
     }
 
     func testSnapshotDoesNotMatchDifferentWindowTitle() {

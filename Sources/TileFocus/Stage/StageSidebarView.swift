@@ -61,6 +61,7 @@ final class StageTopBarController: NSObject {
     private var collapseWorkItems: [NSScreen: DispatchWorkItem] = [:]
     private var windowStateCancellable: AnyCancellable?
     private var settingsCancellable: AnyCancellable?
+    private var arrangementMemoryCancellable: AnyCancellable?
     
     private let barWidth: CGFloat = 620
     private let collapsedHeight: CGFloat = 22
@@ -81,9 +82,18 @@ final class StageTopBarController: NSObject {
             let totalCount = wins.active.count + wins.staged.count
             // 1個あたり 48px + 間隔 12px、左右パディング 16px * 2 = 32px
             let calculatedWidth = CGFloat(totalCount) * (48 + 12) - 12 + 32
-            return max(180, min(620, calculatedWidth))
+            let minimumWidth: CGFloat = hasMatchingRememberedArrangement(windowManager: windowManager) ? 360 : 180
+            return max(minimumWidth, min(620, calculatedWidth))
         } else {
             return barWidth
+        }
+    }
+
+    @MainActor
+    private func hasMatchingRememberedArrangement(windowManager: WindowManager) -> Bool {
+        let visibleWindows = windowManager.managedWindows.filter { $0.state != .staged }
+        return AppSettings.shared.rememberedWindowArrangements.contains {
+            $0.matchesWindowCombination(windows: visibleWindows)
         }
     }
     
@@ -191,6 +201,15 @@ final class StageTopBarController: NSObject {
                     self.setAlwaysShow(alwaysShow && windowManager.currentMode == .float, windowManager: windowManager)
                 }
             }
+
+        arrangementMemoryCancellable = AppSettings.shared.$rememberedWindowArrangements
+            .receive(on: RunLoop.main)
+            .sink { [weak self, weak windowManager] _ in
+                guard let self, let windowManager else { return }
+                Task { @MainActor in
+                    self.refreshExpandedPanels(windowManager: windowManager)
+                }
+            }
     }
     
     func hide() {
@@ -198,6 +217,8 @@ final class StageTopBarController: NSObject {
         windowStateCancellable = nil
         settingsCancellable?.cancel()
         settingsCancellable = nil
+        arrangementMemoryCancellable?.cancel()
+        arrangementMemoryCancellable = nil
 
         for workItem in collapseWorkItems.values {
             workItem.cancel()
@@ -245,8 +266,10 @@ final class StageTopBarController: NSObject {
 
     @MainActor
     private func preferredExpandedHeight(for screen: NSScreen, windowManager: WindowManager) -> CGFloat {
+        let arrangementToolbarHeight: CGFloat = hasMatchingRememberedArrangement(windowManager: windowManager) ? 34 : 0
+
         if windowManager.currentMode == .float {
-            return 64 + toolboxHandleHeight
+            return 64 + arrangementToolbarHeight + toolboxHandleHeight
         }
 
         // そのスクリーンに属するウィンドウ数を動的に取得して高さを計算
@@ -284,7 +307,8 @@ final class StageTopBarController: NSObject {
 
         // Focus Mode のときはレイアウト切り替えツールバーの高さ（34px）を追加
         let toolbarHeight: CGFloat = (windowManager.currentMode == .focus) ? 34 : 0
-        return activeHeight + stagedHeight + toolbarHeight + toolboxHandleHeight
+
+        return activeHeight + stagedHeight + toolbarHeight + arrangementToolbarHeight + toolboxHandleHeight
     }
     
     @MainActor
@@ -349,8 +373,10 @@ struct LiquidBlobView: View {
 
 struct StageTopBarView: View {
     @EnvironmentObject private var windowManager: WindowManager
+    @StateObject private var settings = AppSettings.shared
     let screen: NSScreen
     @State private var hoveredWindowID: String?
+    @State private var hoveredArrangementID: UUID?
     @State private var draggedWindow: ManagedWindow?
     @State private var tempWindows: [ManagedWindow] = []
     
@@ -391,6 +417,16 @@ struct StageTopBarView: View {
 
     private var visibleCrownCandidateIDs: [String] {
         activeDisplayWindows.map(\.id)
+    }
+
+    private var activeWindowsForArrangementMemory: [ManagedWindow] {
+        windowManager.managedWindows.filter { $0.state != .staged }
+    }
+
+    private var matchingRememberedArrangements: [WindowArrangementSnapshot] {
+        settings.rememberedWindowArrangements.filter {
+            $0.matchesWindowCombination(windows: activeWindowsForArrangementMemory)
+        }
     }
 
     private func displayIndex(for window: ManagedWindow) -> Int {
@@ -440,6 +476,14 @@ struct StageTopBarView: View {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         
+                        Divider()
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 5)
+                    }
+
+                    if !matchingRememberedArrangements.isEmpty {
+                        rememberedArrangementsToolbar
+
                         Divider()
                             .padding(.horizontal, 10)
                             .padding(.bottom, 5)
@@ -684,6 +728,59 @@ struct StageTopBarView: View {
     private func syncCrownCandidateOrderIfExpanded() {
         guard windowManager.isStagedWindowsBarExpanded else { return }
         windowManager.updateCrownCandidateOrder(visibleCrownCandidateIDs)
+    }
+
+    private var rememberedArrangementsToolbar: some View {
+        HStack(spacing: 8) {
+            Label("記憶", systemImage: "rectangle.stack.fill")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(.secondary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(matchingRememberedArrangements) { snapshot in
+                        rememberedArrangementChip(snapshot)
+                    }
+                }
+                .padding(.vertical, 1)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+    }
+
+    private func rememberedArrangementChip(_ snapshot: WindowArrangementSnapshot) -> some View {
+        let isHovered = hoveredArrangementID == snapshot.id
+
+        return Button {
+            windowManager.applyRememberedArrangement(snapshot)
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.down.to.line.compact")
+                    .font(.system(size: 9, weight: .semibold))
+                Text(snapshot.name)
+                    .font(.system(size: 10, weight: .semibold))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(isHovered ? Color.accentColor : Color.primary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isHovered ? Color.accentColor.opacity(0.14) : Color.white.opacity(0.045))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isHovered ? Color.accentColor.opacity(0.32) : Color.white.opacity(0.12), lineWidth: 0.6)
+            )
+        }
+        .buttonStyle(.plain)
+        .help("記憶した配置を再現")
+        .onHover { hovering in
+            hoveredArrangementID = hovering ? snapshot.id : nil
+        }
+        .scaleEffect(isHovered ? 1.04 : 1)
+        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isHovered)
     }
 
     private var workbenchDropTarget: some View {

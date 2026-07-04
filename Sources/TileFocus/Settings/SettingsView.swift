@@ -133,41 +133,6 @@ private struct GeneralSettingsTab: View {
                 }
             }
 
-            Section("配置記憶（試験中）") {
-                Toggle("表示中の組み合わせで記憶した配置を再現", isOn: $settings.isArrangementMemoryEnabled)
-
-                Button {
-                    WindowManager.shared.rememberCurrentArrangement()
-                } label: {
-                    Label("現在の配置を記憶", systemImage: "rectangle.3.group.bubble")
-                }
-
-                if settings.rememberedWindowArrangements.isEmpty {
-                    Text("記憶済み配置はありません")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(settings.rememberedWindowArrangements) { snapshot in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(snapshot.name)
-                                    .lineLimit(1)
-                                Text("\(snapshot.placements.count)枚 / \(snapshot.capturedAt.formatted(date: .numeric, time: .shortened))")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Button {
-                                settings.removeRememberedWindowArrangement(id: snapshot.id)
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                            .help("記憶済み配置を削除")
-                        }
-                    }
-                }
-            }
-
             Section("レイアウト (Focus Mode)") {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {

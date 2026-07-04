@@ -44,7 +44,7 @@ final class StageManager {
         staged.append(mutableWindow)
         windowManager.updateStagedWindows(staged)
 
-        print("[StageManager] 格納: \(window.appName) - \(window.title) (method=\(method))")
+        Log.info("StageManager", "格納: \(window.appName) - \(window.title) (method=\(method))")
 
         // タイリング中なら残りのウィンドウを再タイリング
         if windowManager.currentMode == .tiling {
@@ -102,7 +102,7 @@ final class StageManager {
             windowManager.requestFocusLayoutUpdate()
         }
 
-        print("[StageManager] 復帰: \(window.appName) - \(window.title)")
+        Log.info("StageManager", "復帰: \(window.appName) - \(window.title)")
     }
 
     /// 全格納ウィンドウを復帰させる

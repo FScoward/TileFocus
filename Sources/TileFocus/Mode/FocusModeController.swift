@@ -457,12 +457,6 @@ final class FocusModeController {
             return
         }
 
-        if windowManager.applyRememberedArrangementIfAvailable() {
-            Log.info(Self.tag, "記憶済み配置を適用したため通常レイアウトをスキップ")
-            DimmingManager.shared.updateFocusedWindowRect()
-            return
-        }
-        
         if windowManager.currentMode == .float {
             applyFloatLayout()
             DimmingManager.shared.updateFocusedWindowRect()

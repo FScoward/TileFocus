@@ -60,6 +60,10 @@ struct WindowArrangementSnapshot: Codable, Equatable, Identifiable {
         layoutKey == Self.layoutKey(for: windows, mode: mode)
     }
 
+    func matchesWindowCombination(windows: [ManagedWindow]) -> Bool {
+        placements.map(\.signature).sorted() == windows.map { Self.signature(for: $0) }.sorted()
+    }
+
     static func layoutKey(for windows: [ManagedWindow], mode: AppMode) -> String {
         layoutKey(forSignatures: windows.map { signature(for: $0) }, mode: mode)
     }

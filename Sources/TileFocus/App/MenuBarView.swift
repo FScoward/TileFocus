@@ -3,6 +3,9 @@ import SwiftUI
 /// メニューバーのドロップダウン UI
 struct MenuBarView: View {
     @EnvironmentObject private var windowManager: WindowManager
+    @StateObject private var settings = AppSettings.shared
+    @State private var arrangementName = ""
+    @State private var hoveredArrangementID: UUID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -36,6 +39,11 @@ struct MenuBarView: View {
 
             // アクション
             actionSection
+
+            Divider()
+
+            // 配置記憶
+            arrangementMemorySection
 
             Divider()
 
@@ -353,6 +361,127 @@ struct MenuBarView: View {
             .padding(.horizontal, 4)
             .disabled(windowManager.stagedWindows.isEmpty)
         }
+    }
+
+    // MARK: - Arrangement Memory Section
+
+    private var arrangementMemorySection: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("配置記憶")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.top, 4)
+
+            HStack(spacing: 8) {
+                Image(systemName: "rectangle.3.group.bubble")
+                    .frame(width: 16)
+
+                TextField("名前", text: $arrangementName)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+
+                Button {
+                    if windowManager.rememberCurrentArrangement(named: arrangementName) {
+                        arrangementName = ""
+                    }
+                } label: {
+                    Label("記憶", systemImage: "plus")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canRememberNamedArrangement)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .padding(.horizontal, 4)
+
+            if settings.rememberedWindowArrangements.isEmpty {
+                HStack {
+                    Image(systemName: "tray")
+                        .frame(width: 16)
+                    Text("記憶済み配置はありません")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .font(.caption)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 5)
+                .padding(.horizontal, 4)
+            } else {
+                ForEach(settings.rememberedWindowArrangements) { snapshot in
+                    rememberedArrangementRow(snapshot)
+                }
+            }
+        }
+    }
+
+    private var canRememberNamedArrangement: Bool {
+        !windowManager.managedWindows.filter { $0.state != .staged }.isEmpty
+    }
+
+    private func rememberedArrangementRow(_ snapshot: WindowArrangementSnapshot) -> some View {
+        let canApply = snapshot.matchesWindowCombination(
+            windows: windowManager.managedWindows.filter { $0.state != .staged }
+        )
+        let isHovered = hoveredArrangementID == snapshot.id
+
+        return HStack(spacing: 8) {
+            Image(systemName: "rectangle.stack")
+                .foregroundStyle(isHovered ? .blue : .secondary)
+                .frame(width: 16)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(snapshot.name)
+                    .font(.caption)
+                    .lineLimit(1)
+                Text("\(snapshot.placements.count)枚 / \(snapshot.capturedAt.formatted(date: .numeric, time: .shortened))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                Button {
+                    windowManager.applyRememberedArrangement(snapshot)
+                } label: {
+                    Image(systemName: "arrow.down.to.line.compact")
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .disabled(!canApply)
+                .help(canApply ? "この配置を適用" : "現在のウィンドウ構成では適用できません")
+
+                Button {
+                    settings.removeRememberedWindowArrangement(id: snapshot.id)
+                } label: {
+                    Image(systemName: "trash")
+                        .frame(width: 18, height: 18)
+                }
+                .buttonStyle(.plain)
+                .help("記憶済み配置を削除")
+            }
+            .opacity(isHovered ? 1 : 0)
+            .frame(width: 44)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if canApply {
+                windowManager.applyRememberedArrangement(snapshot)
+            }
+        }
+        .onHover { hovering in
+            hoveredArrangementID = hovering ? snapshot.id : nil
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(isHovered ? Color.accentColor.opacity(0.08) : Color.clear)
+        )
+        .padding(.horizontal, 12)
+        .padding(.vertical, 5)
+        .padding(.horizontal, 4)
+        .animation(.easeOut(duration: 0.12), value: isHovered)
     }
 
     // MARK: - App Section

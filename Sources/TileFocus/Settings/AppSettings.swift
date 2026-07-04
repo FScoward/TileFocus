@@ -56,7 +56,6 @@ final class AppSettings: ObservableObject {
         static let alwaysShowStageTopBar = "alwaysShowStageTopBar"
         static let excludedAppIdentifiers = "excludedAppIdentifiers"
         static let excludedAppNamesByIdentifier = "excludedAppNamesByIdentifier"
-        static let isArrangementMemoryEnabled = "isArrangementMemoryEnabled"
         static let rememberedWindowArrangements = "rememberedWindowArrangements"
     }
 
@@ -132,11 +131,6 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(excludedAppNamesByIdentifier, forKey: Keys.excludedAppNamesByIdentifier) }
     }
 
-    /// 表示中のウィンドウ構成に応じて、記憶済み配置を再現する試験機能
-    @Published var isArrangementMemoryEnabled: Bool {
-        didSet { defaults.set(isArrangementMemoryEnabled, forKey: Keys.isArrangementMemoryEnabled) }
-    }
-
     /// ウィンドウ構成ごとに記憶した配置
     @Published private(set) var rememberedWindowArrangements: [WindowArrangementSnapshot] {
         didSet { saveRememberedWindowArrangements() }
@@ -207,7 +201,6 @@ final class AppSettings: ObservableObject {
 
         excludedAppIdentifiers = defaults.stringArray(forKey: Keys.excludedAppIdentifiers) ?? []
         excludedAppNamesByIdentifier = defaults.dictionary(forKey: Keys.excludedAppNamesByIdentifier) as? [String: String] ?? [:]
-        isArrangementMemoryEnabled = defaults.object(forKey: Keys.isArrangementMemoryEnabled) as? Bool ?? false
         if let data = defaults.data(forKey: Keys.rememberedWindowArrangements),
            let decoded = try? JSONDecoder().decode([WindowArrangementSnapshot].self, from: data) {
             rememberedWindowArrangements = decoded
@@ -256,17 +249,11 @@ final class AppSettings: ObservableObject {
     }
 
     func rememberWindowArrangement(_ snapshot: WindowArrangementSnapshot) {
-        rememberedWindowArrangements.removeAll { $0.layoutKey == snapshot.layoutKey }
         rememberedWindowArrangements.insert(snapshot, at: 0)
     }
 
     func removeRememberedWindowArrangement(id: UUID) {
         rememberedWindowArrangements.removeAll { $0.id == id }
-    }
-
-    func rememberedArrangement(for windows: [ManagedWindow], mode: AppMode) -> WindowArrangementSnapshot? {
-        let layoutKey = WindowArrangementSnapshot.layoutKey(for: windows, mode: mode)
-        return rememberedWindowArrangements.first { $0.layoutKey == layoutKey }
     }
 
     private func saveRememberedWindowArrangements() {

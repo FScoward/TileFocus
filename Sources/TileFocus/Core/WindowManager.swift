@@ -152,6 +152,9 @@ final class WindowManager: ObservableObject {
     private var workspaceObservers: [NSObjectProtocol] = []
     private var closedWindowReconciliationTimer: Timer?
     private var windowListRefreshRetryGeneration: UInt64 = 0
+    private var emptyWindowSnapshotMissCount = 0
+    private var closedWindowMissCounts: [String: Int] = [:]
+    private var lastSpaceSwitchGuardReleasedAt: Date?
     private var isApplyingRememberedArrangement = false
     /// 仮想スペースUUID（またはモニターID）ごとのマスターウィンドウIDの記憶
     private var masterWindowIDsBySpace: [String: String] = [:]
@@ -229,6 +232,7 @@ final class WindowManager: ObservableObject {
                 // ここでレイアウトを再適用すると、移動先スペースの既存ウィンドウ位置を勝手に変更してしまう。
                 try? await Task.sleep(nanoseconds: 200_000_000) // 0.2秒待機
                 self.isSpaceSwitching = false
+                self.lastSpaceSwitchGuardReleasedAt = Date()
                 Log.info("WindowManager", "仮想スペース切り替えガードを解除しました。")
             }
         }
@@ -629,16 +633,18 @@ final class WindowManager: ObservableObject {
     }
 
     @discardableResult
-    func rememberCurrentArrangement() -> Bool {
+    func rememberCurrentArrangement(named name: String) -> Bool {
         syncActualFrames()
         let visibleWindows = managedWindows.filter { $0.state != .staged }
         guard !visibleWindows.isEmpty else {
             Log.warn("WindowManager", "配置記憶: 対象ウィンドウがないため保存をスキップ")
             return false
         }
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let snapshotName = trimmedName.isEmpty ? Self.defaultArrangementName() : trimmedName
 
         let snapshot = WindowArrangementSnapshot(
-            name: visibleWindows.map { $0.appName }.joined(separator: " + "),
+            name: snapshotName,
             mode: currentMode,
             windows: visibleWindows
         )
@@ -647,14 +653,21 @@ final class WindowManager: ObservableObject {
         return true
     }
 
+    private static func defaultArrangementName() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ja_JP")
+        formatter.dateFormat = "M/d H:mm"
+        return "配置 \(formatter.string(from: Date()))"
+    }
+
     @discardableResult
-    func applyRememberedArrangementIfAvailable() -> Bool {
-        guard AppSettings.shared.isArrangementMemoryEnabled else { return false }
+    func applyRememberedArrangement(_ snapshot: WindowArrangementSnapshot) -> Bool {
         guard !isApplyingRememberedArrangement else { return false }
         guard !isSpaceSwitching else { return false }
 
         let visibleWindows = managedWindows.filter { $0.state != .staged }
-        guard let snapshot = AppSettings.shared.rememberedArrangement(for: visibleWindows, mode: currentMode) else {
+        guard snapshot.matchesWindowCombination(windows: visibleWindows) else {
+            Log.warn("WindowManager", "配置記憶: 現在のウィンドウ構成と一致しないため適用をスキップ: \(snapshot.name)")
             return false
         }
 
@@ -782,28 +795,24 @@ final class WindowManager: ObservableObject {
         }
  
         if !managedWindows.isEmpty,
-           !activeSpaceIDs.isEmpty,
            !sortedApps.isEmpty,
-           tileableWindowCount > 0,
            windows.isEmpty {
+            emptyWindowSnapshotMissCount += 1
             Log.warn(
                 "WindowManager",
-                "ウィンドウ再取得が空になったため既存リストを保持して再試行します: activeSpaceIDs=\(activeSpaceIDs.count) apps=\(sortedApps.count) ax=\(totalAXWindowCount) tileable=\(tileableWindowCount) noID=\(skippedWithoutWindowIDCount) inactiveSpace=\(skippedInactiveSpaceCount)"
+                "ウィンドウ再取得が空になったため既存リストを保持して再試行します: miss=\(emptyWindowSnapshotMissCount) activeSpaceIDs=\(activeSpaceIDs.count) apps=\(sortedApps.count) ax=\(totalAXWindowCount) tileable=\(tileableWindowCount) noID=\(skippedWithoutWindowIDCount) inactiveSpace=\(skippedInactiveSpaceCount)"
             )
-            scheduleWindowListRefreshRetries(reason: "emptySnapshot", delays: [0.3, 1.0])
+            scheduleWindowListRefreshRetries(reason: "emptySnapshot", delays: [0.3, 1.0, 2.0])
             return
         }
+        emptyWindowSnapshotMissCount = 0
 
         // stagedWindows のクリーンアップ（終了済みのアプリや存在しないウィンドウを排除）
         let runningPids = Set(running.map { $0.processIdentifier })
         let validStaged = stagedWindows.filter { staged in
             guard runningPids.contains(staged.pid) else { return false }
             guard !settings.isAutoPlacementExcluded(bundleIdentifier: staged.bundleIdentifier, appName: staged.appName) else { return false }
-            // アプリは起動しているが、ウィンドウがまだ実在しているか
-            let axWindows = AccessibilityHelper.getWindows(for: staged.pid)
-            return axWindows.contains { axWin in
-                AccessibilityHelper.getWindowID(of: axWin) == staged.windowID
-            }
+            return true
         }
         stagedWindows = validStaged
         stageManager?.syncStagedWindows(validStaged)
@@ -996,7 +1005,7 @@ final class WindowManager: ObservableObject {
         #endif
         guard !isSpaceSwitching else { return }
 
-        let trackedWindows = managedWindows + stagedWindows
+        let trackedWindows = managedWindows
         guard !trackedWindows.isEmpty else { return }
 
         let trackedPids = Set(trackedWindows.map(\.pid))
@@ -1011,10 +1020,40 @@ final class WindowManager: ObservableObject {
         }
 
         let closedIDs = Set(trackedWindows.map(\.id)).subtracting(existingIDs)
-        guard !closedIDs.isEmpty else { return }
+        guard !closedIDs.isEmpty else {
+            closedWindowMissCounts.removeAll()
+            return
+        }
 
-        Log.info("WindowManager", "存在しないウィンドウを検知しました: \(closedIDs.sorted().joined(separator: ", "))")
-        for id in closedIDs.sorted() {
+        if let lastSpaceSwitchGuardReleasedAt,
+           Date().timeIntervalSince(lastSpaceSwitchGuardReleasedAt) < 1.5 {
+            Log.debug("WindowManager", "スペース切り替え直後のため閉じたウィンドウ照合を保留: \(closedIDs.sorted().joined(separator: ", "))")
+            return
+        }
+
+        let trackedIDs = Set(trackedWindows.map(\.id))
+        closedWindowMissCounts = closedWindowMissCounts.filter { trackedIDs.contains($0.key) }
+        var confirmedClosedIDs: [String] = []
+
+        for id in closedIDs {
+            let missCount = (closedWindowMissCounts[id] ?? 0) + 1
+            closedWindowMissCounts[id] = missCount
+            if missCount >= 3 {
+                confirmedClosedIDs.append(id)
+            } else {
+                Log.debug("WindowManager", "存在しない可能性のあるウィンドウを保留: \(id) miss=\(missCount)")
+            }
+        }
+
+        for id in trackedIDs.subtracting(closedIDs) {
+            closedWindowMissCounts.removeValue(forKey: id)
+        }
+
+        guard !confirmedClosedIDs.isEmpty else { return }
+
+        Log.info("WindowManager", "存在しないウィンドウを検知しました: \(confirmedClosedIDs.sorted().joined(separator: ", "))")
+        for id in confirmedClosedIDs.sorted() {
+            closedWindowMissCounts.removeValue(forKey: id)
             removeWindow(id: id)
         }
     }
