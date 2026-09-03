@@ -16,6 +16,9 @@ final class WindowManager: ObservableObject {
     /// 現在のアプリモード
     @Published private(set) var currentMode: AppMode = .off
 
+    /// Meta+クリックで開始した Float Mode の一時フォーカス状態
+    @Published private(set) var isMetaClickFocusActive: Bool = false
+
     /// 管理対象のウィンドウリスト（タイリング対象）
     @Published private(set) var managedWindows: [ManagedWindow] = []
 
@@ -280,6 +283,8 @@ final class WindowManager: ObservableObject {
     }
 
     private func deactivateCurrentMode(restoreWindows: Bool = true) {
+        clearMetaClickFocusIfNeeded()
+
         switch currentMode {
         case .off:
             break
@@ -289,6 +294,51 @@ final class WindowManager: ObservableObject {
             focusController?.deactivate(restoreWindows: restoreWindows)
         }
         DimmingManager.shared.updateDimmingState()
+    }
+
+    /// Command+クリックされた管理対象ウィンドウを Float Mode のマスターとして中央に表示する。
+    ///
+    /// 初回クリックでは一時フォーカスを開始し、同じ対象の再クリックでは Float Mode と
+    /// 一時遮光を解除する。対象を AX のクリック位置から解決できない場合は、現在の
+    /// モードと設定を変更しない。
+    func focusWindowAtMetaClick(at mouseLocation: NSPoint) {
+        let axPoint = ScreenManager().appKitToAX(mouseLocation)
+        guard let axWindow = AccessibilityHelper.getWindow(at: axPoint),
+              let target = managedWindow(for: axWindow) else {
+            Log.debug("WindowManager", "focusWindowAtMetaClick: 管理対象ウィンドウを特定できないためスキップ")
+            return
+        }
+
+        if currentMode == .float,
+           isMetaClickFocusActive,
+           masterWindowID == target.id {
+            Log.info("WindowManager", "focusWindowAtMetaClick: 同じ対象を再クリックしたため Float Mode を解除")
+            switchMode(to: .float)
+            return
+        }
+
+        Log.info("WindowManager", "focusWindowAtMetaClick: \(target.appName) - \(target.title)")
+
+        if currentMode != .float {
+            switchMode(to: .float)
+        }
+
+        isMetaClickFocusActive = true
+
+        if let focusController {
+            focusController.selectWindowAsMasterForMetaClick(to: target.id)
+        } else {
+            masterWindowID = target.id
+            focusedWindowID = target.id
+            DimmingManager.shared.updateFocusedWindowRect()
+        }
+        DimmingManager.shared.updateDimmingState()
+    }
+
+    private func clearMetaClickFocusIfNeeded() {
+        guard isMetaClickFocusActive else { return }
+        isMetaClickFocusActive = false
+        Log.info("WindowManager", "Meta+クリックによる一時フォーカスを解除")
     }
 
     private func saveCurrentModeForActiveSpace() {
@@ -1158,6 +1208,23 @@ final class WindowManager: ObservableObject {
     #endif
 
     // MARK: - Helpers
+
+    /// AX のクリック対象を、現在管理しているウィンドウへ対応付ける。
+    private func managedWindow(for axWindow: AXUIElement) -> ManagedWindow? {
+        guard let windowID = AccessibilityHelper.getWindowID(of: axWindow),
+              let pid = AccessibilityHelper.getPid(of: axWindow) else {
+            return nil
+        }
+
+        let allWindows = managedWindows + stagedWindows
+        if let exactMatch = allWindows.first(where: { $0.pid == pid && $0.windowID == windowID }) {
+            return exactMatch
+        }
+
+        let title = AccessibilityHelper.getTitle(of: axWindow) ?? ""
+        guard !title.isEmpty else { return nil }
+        return allWindows.first { $0.pid == pid && $0.title == title }
+    }
 
     /// 現在フォーカスされているウィンドウを取得
     func getFocusedWindow() -> ManagedWindow? {

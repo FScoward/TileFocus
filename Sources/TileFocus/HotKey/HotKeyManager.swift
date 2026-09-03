@@ -13,6 +13,7 @@ import HotKey
 /// - ⌃⌘→ : 次のレイアウトプリセット
 /// - ⌃⌘← : 前のレイアウトプリセット
 /// - ⌥Tab / ⌥⇧Tab : 王冠（マスターウィンドウ）を次/前のウィンドウへ移動
+/// - ⌃⌘+クリック : クリックしたウィンドウを Float Mode の中央に表示
 final class HotKeyManager {
 
     // MARK: - Dependencies
@@ -103,6 +104,16 @@ final class HotKeyManager {
             return event
         }
 
+        let globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+            let mouseLocation = NSEvent.mouseLocation
+            self?.handleMouseClick(event: event, at: mouseLocation)
+        }
+        let localClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] event in
+            let mouseLocation = NSEvent.mouseLocation
+            self?.handleMouseClick(event: event, at: mouseLocation)
+            return event
+        }
+
         hotKeys = [
             focusHK,
             floatHK,
@@ -114,7 +125,12 @@ final class HotKeyManager {
             nextCrownHK,
             previousCrownHK
         ]
-        eventMonitors = [globalFlagsMonitor, localFlagsMonitor].compactMap { $0 }
+        eventMonitors = [
+            globalFlagsMonitor,
+            localFlagsMonitor,
+            globalClickMonitor,
+            localClickMonitor
+        ].compactMap { $0 }
         print("[HotKeyManager] \(hotKeys.count) 個のホットキーを登録")
     }
 
@@ -124,6 +140,23 @@ final class HotKeyManager {
             NSEvent.removeMonitor(monitor)
         }
         eventMonitors.removeAll()
+    }
+
+    /// Control+Command 単独のクリックだけを Float Mode の対象選択へ渡す。
+    /// Control+Shift など既存のクリック操作は別の監視経路に委ねる。
+    func handleMouseClick(event: NSEvent, at mouseLocation: NSPoint) {
+        let flags = event.modifierFlags
+        guard event.type == .leftMouseDown,
+              flags.contains(.command),
+              flags.contains(.control),
+              !flags.contains(.option),
+              !flags.contains(.shift) else {
+            return
+        }
+
+        Task { @MainActor [weak self] in
+            self?.windowManager?.focusWindowAtMetaClick(at: mouseLocation)
+        }
     }
 
     private func handleFlagsChanged(_ event: NSEvent) {
