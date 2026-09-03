@@ -228,6 +228,16 @@ final class FocusModeController {
         applyLayout()
     }
 
+    /// Meta+クリックの対象を Float Mode のマスター兼フォーカスとして選択する。
+    /// 既存の Float Mode 用トグル（同じマスターなら王冠を外す）は適用しない。
+    func selectWindowAsMasterForMetaClick(to windowID: String) {
+        guard let windowManager, windowManager.currentMode == .float else { return }
+
+        setMasterWindowID(windowID)
+        setFocusedWindowID(windowID)
+        applyLayout()
+    }
+
     /// フォーカスウィンドウのみを切り替え、マスター（王冠）は変更しない
     func switchFocusedWindowOnly(to id: String) {
         guard let windowManager, (windowManager.currentMode == .focus || windowManager.currentMode == .float) else { return }
@@ -294,6 +304,12 @@ final class FocusModeController {
     @MainActor
     func handleMouseClick(event: NSEvent, at mouseLocation: NSPoint) {
         let flags = event.modifierFlags
+        let isMetaClick = flags.contains(.command)
+            && flags.contains(.control)
+            && !flags.contains(.option)
+            && !flags.contains(.shift)
+        guard !isMetaClick else { return }
+
         let isCtrlShiftPressed = flags.contains(.control) && flags.contains(.shift)
         
         let trigger = AppSettings.shared.crownSwapTrigger

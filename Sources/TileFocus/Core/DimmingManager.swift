@@ -2,6 +2,7 @@ import Cocoa
 import Combine
 
 /// 選択したウィンドウ以外を暗くする（Dimming）機能を管理するクラス
+/// 通常設定または Meta+クリック中の一時状態が有効で、モードが OFF でない場合に遮光する。
 @MainActor
 final class DimmingManager {
     static let shared = DimmingManager()
@@ -36,7 +37,7 @@ final class DimmingManager {
     
     /// Dimming状態を更新（ウィンドウの作成/破棄、表示/非表示）
     func updateDimmingState() {
-        let isEnabled = AppSettings.shared.isDimmingEnabled
+        let isEnabled = AppSettings.shared.isDimmingEnabled || WindowManager.shared.isMetaClickFocusActive
         let isModeActive = WindowManager.shared.currentMode != .off
         
         if isEnabled && isModeActive {
@@ -96,7 +97,8 @@ final class DimmingManager {
     
     /// フォーカスされたウィンドウのフレームを更新して切り抜く
     func updateFocusedWindowRect() {
-        guard AppSettings.shared.isDimmingEnabled && WindowManager.shared.currentMode != .off else {
+        guard (AppSettings.shared.isDimmingEnabled || WindowManager.shared.isMetaClickFocusActive),
+              WindowManager.shared.currentMode != .off else {
             hideWindows()
             return
         }

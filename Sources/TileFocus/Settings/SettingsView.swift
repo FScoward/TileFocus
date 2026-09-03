@@ -281,6 +281,7 @@ private struct HotKeySettingsTab: View {
     private let hotKeys: [(String, String)] = [
         ("Focus Mode ON/OFF", "⌃⌘F"),
         ("Float Mode ON/OFF", "⌃⌘L"),
+        ("クリックしたウィンドウを Float Mode の中央に表示", "⌃⌘+クリック"),
         ("フォーカス中のウィンドウをしまう", "⌃⌘S"),
         ("お道具箱から全て取り出す", "⌃⌘R"),
         ("次のレイアウト", "⌃⌘→"),
