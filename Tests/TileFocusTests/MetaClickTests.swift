@@ -5,19 +5,32 @@ import AppKit
 @MainActor
 final class MetaClickTests: XCTestCase {
     private var originalDimmingEnabled = false
+    private var originalMetaClickDimmingOpacity = 0.3
+    private var originalMetaClickDimmingOpacityObject: Any?
     private var originalModesBySpace: [String: String] = [:]
+    private var originalCrownSwapTrigger: CrownSwapTrigger = .clickOnly
 
     override func setUp() {
         super.setUp()
         originalDimmingEnabled = AppSettings.shared.isDimmingEnabled
+        originalMetaClickDimmingOpacity = AppSettings.shared.metaClickDimmingOpacity
+        originalMetaClickDimmingOpacityObject = UserDefaults.standard.object(forKey: "metaClickDimmingOpacity")
         originalModesBySpace = AppSettings.shared.modesBySpace
+        originalCrownSwapTrigger = AppSettings.shared.crownSwapTrigger
         AppSettings.shared.isDimmingEnabled = false
         resetAccessibilityMocks()
     }
 
     override func tearDown() {
         AppSettings.shared.isDimmingEnabled = originalDimmingEnabled
+        AppSettings.shared.metaClickDimmingOpacity = originalMetaClickDimmingOpacity
+        if let originalMetaClickDimmingOpacityObject {
+            UserDefaults.standard.set(originalMetaClickDimmingOpacityObject, forKey: "metaClickDimmingOpacity")
+        } else {
+            UserDefaults.standard.removeObject(forKey: "metaClickDimmingOpacity")
+        }
         AppSettings.shared.modesBySpace = originalModesBySpace
+        AppSettings.shared.crownSwapTrigger = originalCrownSwapTrigger
         resetAccessibilityMocks()
         super.tearDown()
     }
@@ -137,6 +150,69 @@ final class MetaClickTests: XCTestCase {
         XCTAssertTrue(AppSettings.shared.isDimmingEnabled)
     }
 
+    func testMetaFocusDimmingTargetsMasterInsteadOfFocusedWindow() {
+        XCTAssertEqual(
+            DimmingManager.dimmingTargetWindowID(
+                isMetaClickFocusActive: true,
+                focusedWindowID: "focused",
+                masterWindowID: "master"
+            ),
+            "master"
+        )
+    }
+
+    func testNormalDimmingStillTargetsFocusedWindow() {
+        XCTAssertEqual(
+            DimmingManager.dimmingTargetWindowID(
+                isMetaClickFocusActive: false,
+                focusedWindowID: "focused",
+                masterWindowID: "master"
+            ),
+            "focused"
+        )
+    }
+
+    func testMetaFocusUsesDedicatedDimmingOpacity() {
+        XCTAssertEqual(
+            DimmingManager.opacityForCurrentState(
+                isMetaClickFocusActive: true,
+                normalOpacity: 0.2,
+                metaClickOpacity: 0.7
+            ),
+            0.7
+        )
+    }
+
+    func testNormalDimmingUsesNormalOpacity() {
+        XCTAssertEqual(
+            DimmingManager.opacityForCurrentState(
+                isMetaClickFocusActive: false,
+                normalOpacity: 0.2,
+                metaClickOpacity: 0.7
+            ),
+            0.2
+        )
+    }
+
+    func testMetaClickDimmingOpacityDefaultsTo30PercentWhenUnset() {
+        let suiteName = "MetaClickTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        XCTAssertNil(defaults.object(forKey: "metaClickDimmingOpacity"))
+        XCTAssertEqual(AppSettings.loadMetaClickDimmingOpacity(from: defaults), 0.3)
+    }
+
+    func testMetaClickDimmingOpacityPersistsToUserDefaults() {
+        let value = 0.65
+        AppSettings.shared.metaClickDimmingOpacity = value
+
+        XCTAssertEqual(
+            UserDefaults.standard.double(forKey: "metaClickDimmingOpacity"),
+            value
+        )
+    }
+
     func testCommandOnlyClickDoesNothing() async throws {
         let windowManager = makeWindowManager()
         let target = ManagedWindow(
@@ -248,6 +324,47 @@ final class MetaClickTests: XCTestCase {
         XCTAssertEqual(windowManager.masterWindowID, currentMaster.id)
         XCTAssertFalse(windowManager.isMetaClickFocusActive)
         XCTAssertFalse(AppSettings.shared.isDimmingEnabled)
+    }
+
+    func testNormalClickWhileMetaFocusIsActiveDoesNotChangeMasterOrFocus() async throws {
+        AppSettings.shared.crownSwapTrigger = .clickOnly
+
+        let windowManager = WindowManager()
+        windowManager.isTestingMode = true
+        let controller = FocusModeController(windowManager: windowManager)
+        windowManager.setFocusControllerForTesting(controller)
+
+        let first = ManagedWindow(
+            pid: 1001,
+            windowID: 1,
+            title: "First",
+            appName: "FirstApp",
+            bundleIdentifier: "com.example.first",
+            frame: .zero
+        )
+        let second = ManagedWindow(
+            pid: 1002,
+            windowID: 2,
+            title: "Second",
+            appName: "SecondApp",
+            bundleIdentifier: "com.example.second",
+            frame: .zero
+        )
+        windowManager.updateManagedWindows([first, second])
+
+        mockAccessibilityWindow(for: first)
+        windowManager.focusWindowAtMetaClick(at: .zero)
+        XCTAssertTrue(windowManager.isMetaClickFocusActive)
+        XCTAssertEqual(windowManager.masterWindowID, first.id)
+        XCTAssertEqual(windowManager.focusedWindowID, first.id)
+
+        mockAccessibilityWindow(for: second)
+        controller.handleMouseClick(event: mouseDown(modifiers: []), at: .zero)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        XCTAssertEqual(windowManager.masterWindowID, first.id)
+        XCTAssertEqual(windowManager.focusedWindowID, first.id)
+        XCTAssertTrue(windowManager.isMetaClickFocusActive)
     }
 
     func testLeavingFloatByModeSwitchClearsTemporaryMetaFocus() async throws {

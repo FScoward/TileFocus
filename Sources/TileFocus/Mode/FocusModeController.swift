@@ -303,6 +303,11 @@ final class FocusModeController {
 
     @MainActor
     func handleMouseClick(event: NSEvent, at mouseLocation: NSPoint) {
+        guard windowManager?.isMetaClickFocusActive != true else {
+            Log.debug(Self.tag, "handleMouseClick: Meta+クリック中は専用経路を優先するため通常クリックをスキップ")
+            return
+        }
+
         let flags = event.modifierFlags
         let isMetaClick = flags.contains(.command)
             && flags.contains(.control)
