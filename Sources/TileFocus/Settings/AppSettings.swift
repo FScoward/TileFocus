@@ -32,6 +32,7 @@ enum CrownSwapTrigger: String, CaseIterable, Identifiable {
 final class AppSettings: ObservableObject {
 
     static let shared = AppSettings()
+    static let defaultMetaClickDimmingOpacity = 0.3
 
     private let defaults = UserDefaults.standard
 
@@ -53,6 +54,7 @@ final class AppSettings: ObservableObject {
         static let floatModeHeightRatio = "floatModeHeightRatio"
         static let isDimmingEnabled = "isDimmingEnabled"
         static let dimmingOpacity = "dimmingOpacity"
+        static let metaClickDimmingOpacity = "metaClickDimmingOpacity"
         static let alwaysShowStageTopBar = "alwaysShowStageTopBar"
         static let excludedAppIdentifiers = "excludedAppIdentifiers"
         static let excludedAppNamesByIdentifier = "excludedAppNamesByIdentifier"
@@ -114,6 +116,11 @@ final class AppSettings: ObservableObject {
     /// 選択したウィンドウ以外を暗くする際の不透明度
     @Published var dimmingOpacity: Double {
         didSet { defaults.set(dimmingOpacity, forKey: Keys.dimmingOpacity) }
+    }
+
+    /// 特殊な中央表示（Meta+クリック）で選択したウィンドウ以外を暗くする際の不透明度
+    @Published var metaClickDimmingOpacity: Double {
+        didSet { defaults.set(metaClickDimmingOpacity, forKey: Keys.metaClickDimmingOpacity) }
     }
 
     /// 上部ホバーを常に表示するかどうか
@@ -197,6 +204,8 @@ final class AppSettings: ObservableObject {
 
         let savedDimmingOpacity = defaults.double(forKey: Keys.dimmingOpacity)
         dimmingOpacity = savedDimmingOpacity == 0 ? 0.3 : savedDimmingOpacity
+
+        metaClickDimmingOpacity = Self.loadMetaClickDimmingOpacity(from: defaults)
         alwaysShowStageTopBar = defaults.object(forKey: Keys.alwaysShowStageTopBar) as? Bool ?? false
 
         excludedAppIdentifiers = defaults.stringArray(forKey: Keys.excludedAppIdentifiers) ?? []
@@ -212,6 +221,11 @@ final class AppSettings: ObservableObject {
     /// TilingGap 構造体として返す
     var tilingGap: TilingGap {
         TilingGap(outer: tilingGapOuter, inner: tilingGapInner)
+    }
+
+    static func loadMetaClickDimmingOpacity(from defaults: UserDefaults) -> Double {
+        let savedOpacity = defaults.double(forKey: Keys.metaClickDimmingOpacity)
+        return savedOpacity == 0 ? defaultMetaClickDimmingOpacity : savedOpacity
     }
 
     func appExclusionIdentifier(bundleIdentifier: String?, appName: String) -> String {

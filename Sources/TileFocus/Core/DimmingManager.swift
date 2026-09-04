@@ -21,8 +21,15 @@ final class DimmingManager {
             
         AppSettings.shared.$dimmingOpacity
             .receive(on: RunLoop.main)
-            .sink { [weak self] opacity in
-                self?.updateOpacity(opacity)
+            .sink { [weak self] _ in
+                self?.updateOpacityForCurrentState()
+            }
+            .store(in: &cancellables)
+
+        AppSettings.shared.$metaClickDimmingOpacity
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.updateOpacityForCurrentState()
             }
             .store(in: &cancellables)
             
@@ -42,11 +49,28 @@ final class DimmingManager {
         
         if isEnabled && isModeActive {
             setupWindows()
+            updateOpacityForCurrentState()
             showWindows()
             updateFocusedWindowRect()
         } else {
             hideWindows()
         }
+    }
+
+    static func dimmingTargetWindowID(
+        isMetaClickFocusActive: Bool,
+        focusedWindowID: String?,
+        masterWindowID: String?
+    ) -> String? {
+        isMetaClickFocusActive ? masterWindowID : focusedWindowID
+    }
+
+    static func opacityForCurrentState(
+        isMetaClickFocusActive: Bool,
+        normalOpacity: Double,
+        metaClickOpacity: Double
+    ) -> Double {
+        isMetaClickFocusActive ? metaClickOpacity : normalOpacity
     }
     
     private func setupWindows() {
@@ -94,19 +118,35 @@ final class DimmingManager {
             window.setOpacity(opacity)
         }
     }
+
+    private func updateOpacityForCurrentState() {
+        let windowManager = WindowManager.shared
+        let opacity = Self.opacityForCurrentState(
+            isMetaClickFocusActive: windowManager.isMetaClickFocusActive,
+            normalOpacity: AppSettings.shared.dimmingOpacity,
+            metaClickOpacity: AppSettings.shared.metaClickDimmingOpacity
+        )
+        updateOpacity(opacity)
+    }
     
-    /// フォーカスされたウィンドウのフレームを更新して切り抜く
+    /// 遮光の切り抜き対象ウィンドウのフレームを更新する
     func updateFocusedWindowRect() {
-        guard (AppSettings.shared.isDimmingEnabled || WindowManager.shared.isMetaClickFocusActive),
-              WindowManager.shared.currentMode != .off else {
+        let windowManager = WindowManager.shared
+        guard (AppSettings.shared.isDimmingEnabled || windowManager.isMetaClickFocusActive),
+              windowManager.currentMode != .off else {
             hideWindows()
             return
         }
-        
-        // フォーカスされているウィンドウを取得
-        guard let focusedID = WindowManager.shared.focusedWindowID,
-              let focusedWindow = (WindowManager.shared.managedWindows + WindowManager.shared.stagedWindows).first(where: { $0.id == focusedID }) else {
-            // フォーカスウィンドウがない場合は、画面全体を暗くしたままにする（切り抜き無し）
+
+        let targetID = Self.dimmingTargetWindowID(
+            isMetaClickFocusActive: windowManager.isMetaClickFocusActive,
+            focusedWindowID: windowManager.focusedWindowID,
+            masterWindowID: windowManager.masterWindowID
+        )
+        let allWindows = windowManager.managedWindows + windowManager.stagedWindows
+        guard let targetID,
+              let targetWindow = allWindows.first(where: { $0.id == targetID }) else {
+            // 切り抜き対象ウィンドウがない場合は、画面全体を暗くしたままにする（切り抜き無し）
             for window in dimmingWindows.values {
                 window.setTargetRect(nil)
             }
@@ -114,8 +154,8 @@ final class DimmingManager {
             showWindows()
             return
         }
-        
-        let axFrame = currentAXFrame(for: focusedWindow)
+
+        let axFrame = currentAXFrame(for: targetWindow)
         let screenManager = ScreenManager()
         let appKitFrame = screenManager.axToAppKit(axFrame)
         

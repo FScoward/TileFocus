@@ -103,6 +103,17 @@ private struct GeneralSettingsTab: View {
                         Slider(value: $settings.dimmingOpacity, in: 0.1...0.8, step: 0.05)
                     }
                 }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("特殊な中央表示の遮光強度")
+                        Spacer()
+                        Text("\(Int(settings.metaClickDimmingOpacity * 100))%")
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
+                    }
+                    Slider(value: $settings.metaClickDimmingOpacity, in: 0.1...0.8, step: 0.05)
+                }
             }
 
             Section("自動配置の対象外") {
@@ -193,6 +204,9 @@ private struct GeneralSettingsTab: View {
             DimmingManager.shared.updateDimmingState()
         }
         .onChange(of: settings.dimmingOpacity) { _ in
+            DimmingManager.shared.updateFocusedWindowRect()
+        }
+        .onChange(of: settings.metaClickDimmingOpacity) { _ in
             DimmingManager.shared.updateFocusedWindowRect()
         }
     }
